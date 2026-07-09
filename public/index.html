@@ -1,0 +1,481 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, viewport-fit=cover">
+<meta name="theme-color" content="#0f172a">
+<title>HRAPIMS v1.0.0</title>
+<style>
+:root {
+  --bg: #f1f5f9; --surface: #ffffff; --text: #0f172a; --text2: #64748b;
+  --primary: #3b82f6; --primary-hover: #2563eb; --danger: #ef4444; --success: #22c55e;
+  --warning: #f59e0b; --border: #e2e8f0; --radius: 14px; --radius-sm: 10px;
+  --shadow: 0 1px 2px rgba(0,0,0,.04), 0 4px 16px rgba(0,0,0,.04);
+  --shadow-lg: 0 20px 50px rgba(0,0,0,.15);
+  --font: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+}
+body.dark {
+  --bg: #0f172a; --surface: #1e293b; --text: #f1f5f9; --text2: #94a3b8;
+  --border: #334155; --shadow: 0 1px 2px rgba(0,0,0,.2);
+}
+*{margin:0;padding:0;box-sizing:border-box}
+body{font-family:var(--font);background:var(--bg);color:var(--text);min-height:100vh;min-height:100dvh;transition:background .3s,color .3s}
+#app{max-width:720px;margin:0 auto;padding:12px 16px 90px}
+.header{display:flex;align-items:center;justify-content:space-between;padding:16px 20px;background:var(--surface);border-radius:var(--radius);box-shadow:var(--shadow);margin-bottom:16px;flex-wrap:wrap;gap:10px}
+.header-left{display:flex;align-items:center;gap:12px}
+.header h1{font-size:1.15rem;font-weight:700;letter-spacing:-.01em}
+.header .version{font-size:.7rem;color:var(--text2);background:var(--border);padding:3px 8px;border-radius:20px}
+.btn{display:inline-flex;align-items:center;gap:6px;padding:9px 16px;border:none;border-radius:var(--radius-sm);font-size:.82rem;font-weight:600;cursor:pointer;transition:all .15s;white-space:nowrap;font-family:var(--font);letter-spacing:-.005em}
+.btn:active{transform:scale(.96)}
+.btn-primary{background:var(--primary);color:#fff}.btn-primary:hover{background:var(--primary-hover)}
+.btn-danger{background:var(--danger);color:#fff}
+.btn-success{background:var(--success);color:#fff}
+.btn-warning{background:var(--warning);color:#000}
+.btn-ghost{background:transparent;color:var(--text2);border:1.5px solid var(--border)}
+.btn-ghost:hover{background:var(--border)}
+.btn-sm{padding:6px 12px;font-size:.75rem;border-radius:8px}
+.btn-xs{padding:4px 10px;font-size:.7rem;border-radius:6px}
+.btn:disabled{opacity:.4;pointer-events:none}
+.card{background:var(--surface);border-radius:var(--radius);padding:18px;margin-bottom:12px;box-shadow:var(--shadow);border:1px solid var(--border);transition:background .3s}
+.card-title{font-weight:700;font-size:.95rem;letter-spacing:-.005em;margin-bottom:12px}
+.input-wrap{position:relative;margin-bottom:10px}
+.input{width:100%;padding:10px 14px;border:1.5px solid var(--border);border-radius:var(--radius-sm);font-size:.9rem;background:var(--surface);color:var(--text);transition:border .2s;font-family:var(--font)}
+.input:focus{outline:none;border-color:var(--primary);box-shadow:0 0 0 3px rgba(59,130,246,.1)}
+.input.valid{border-color:var(--success);padding-right:36px}
+.input-check{position:absolute;right:12px;top:50%;transform:translateY(-50%);color:var(--success);font-weight:700;font-size:1rem;pointer-events:none}
+.label{font-size:.75rem;font-weight:600;color:var(--text2);margin-bottom:4px;display:block;text-transform:uppercase;letter-spacing:.04em}
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.grid3{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}
+.badge{display:inline-flex;align-items:center;gap:3px;padding:3px 10px;border-radius:20px;font-size:.7rem;font-weight:600;letter-spacing:.01em}
+.badge-primary{background:#dbeafe;color:#1e40af}
+.badge-danger{background:#fee2e2;color:#991b1b}
+.badge-success{background:#dcfce7;color:#166534}
+.badge-warning{background:#fef3c7;color:#92400e}
+.badge-gray{background:#f3f4f6;color:#6b7280}
+.patient-card{cursor:pointer;transition:all .12s;border:1.5px solid transparent}
+.patient-card:hover{border-color:var(--primary);box-shadow:0 4px 12px rgba(0,0,0,.08)}
+.patient-card:active{transform:scale(.985)}
+.patient-name{font-size:1rem;font-weight:700;letter-spacing:-.005em}
+.patient-id{font-family:'SF Mono',monospace;font-size:.78rem;color:var(--primary);font-weight:600}
+.patient-meta{font-size:.78rem;color:var(--text2);margin-top:2px;display:flex;gap:12px;flex-wrap:wrap}
+.empty-state{text-align:center;padding:50px 20px;color:var(--text2)}
+.empty-state .icon{font-size:3rem;margin-bottom:12px}
+.alert{padding:12px 16px;border-radius:var(--radius-sm);font-size:.85rem;margin-bottom:12px;font-weight:500;white-space:pre-line}
+.alert-error{background:#fef2f2;color:#991b1b;border:1px solid #fecaca}
+.alert-success{background:#f0fdf4;color:#166534;border:1px solid #bbf7d0}
+.alert-warning{background:#fffbeb;color:#92400e;border:1px solid #fde68a}
+.modal-overlay{position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:200;display:flex;align-items:center;justify-content:center;padding:16px}
+.modal{background:var(--surface);border-radius:var(--radius);padding:24px;width:100%;max-width:460px;max-height:85vh;overflow-y:auto;box-shadow:var(--shadow-lg)}
+.bottom-nav{position:fixed;bottom:0;left:50%;transform:translateX(-50%);width:100%;max-width:720px;background:var(--surface);display:flex;border-top:1px solid var(--border);z-index:100;padding:6px 0 env(safe-area-inset-bottom,0);overflow-x:auto}
+.bottom-nav button{flex:1;min-width:52px;padding:8px 2px;border:none;background:transparent;font-size:.62rem;font-weight:600;color:var(--text2);cursor:pointer;transition:color .15s;font-family:var(--font)}
+.bottom-nav button.active{color:var(--primary)}
+.bottom-nav .nav-icon{font-size:1.25rem;display:block;margin-bottom:2px}
+.spinner{width:22px;height:22px;border:2.5px solid var(--border);border-top-color:var(--primary);border-radius:50%;animation:spin .7s linear infinite;margin:auto}
+@keyframes spin{to{transform:rotate(360deg)}}
+table{width:100%;border-collapse:collapse;font-size:.8rem}
+th{text-align:left;padding:10px 8px;font-weight:600;color:var(--text2);font-size:.72rem;text-transform:uppercase;letter-spacing:.03em;border-bottom:2px solid var(--border)}
+td{padding:10px 8px;border-bottom:1px solid var(--border);vertical-align:middle}
+tr.clickable{cursor:pointer}
+tr.clickable:hover{background:var(--border)}
+.expandable-row{display:none;background:var(--bg)}
+.expandable-row td{padding:12px}
+pre.json-view{font-size:.7rem;white-space:pre-wrap;max-height:200px;overflow-y:auto;background:var(--bg);padding:10px;border-radius:8px;font-family:'SF Mono',monospace}
+.stat-card{text-align:center;padding:16px}
+.stat-value{font-size:2rem;font-weight:800;letter-spacing:-.02em;line-height:1}
+.stat-label{font-size:.72rem;color:var(--text2);margin-top:4px;text-transform:uppercase;letter-spacing:.04em}
+.dev-banner{position:fixed;top:0;left:0;right:0;background:var(--warning);color:#000;padding:10px;text-align:center;z-index:300;font-weight:700;font-size:.78rem}
+#app{padding-top:12px}
+body.has-banner #app{padding-top:48px}
+@media(max-width:400px){.grid2,.grid3{grid-template-columns:1fr}.bottom-nav button{font-size:.58rem}}
+</style>
+</head>
+<body>
+<div id="devBanner" class="dev-banner">⚠️ No login is enabled on this app — anyone with this URL has full access to all patient records.</div>
+<div id="app"></div>
+<script>
+const API = '/api';
+const APP_NAME = 'HRAPIMS';
+const APP_VERSION = '1.0.0';
+
+let currentView = 'dashboard', currentPage = 1, editPatient = null;
+let activityFilter = { action: '', patient: '', start: '', end: '' };
+let activityPage = 1;
+let darkMode = localStorage.getItem('darkMode') === 'true';
+
+const app = document.getElementById('app');
+document.body.classList.add('has-banner');
+if (darkMode) document.body.classList.add('dark');
+
+async function api(path, options = {}) {
+  const res = await fetch(API + path, { ...options, headers: { 'Content-Type': 'application/json', ...(options.headers || {}) } });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(data.error || 'Request failed');
+  return data;
+}
+function E(msg) { return '<div class="alert alert-error">' + msg + '</div>'; }
+function S(msg) { return '<div class="alert alert-success">' + msg + '</div>'; }
+function W(msg) { return '<div class="alert alert-warning">' + msg + '</div>'; }
+
+function phoneInput(id, value, placeholder) {
+  return '<div class="input-wrap"><input class="input" type="tel" id="' + id + '" value="' + (value || '') + '" placeholder="' + (placeholder || '0201234567') + '" oninput="validatePhone(\'' + id + '\')"><span class="input-check" id="' + id + '_check" style="display:none">\u2705</span></div>';
+}
+function validatePhone(id) {
+  const el = document.getElementById(id);
+  const check = document.getElementById(id + '_check');
+  const val = el.value.replace(/\D/g, '');
+  if (val.length === 10 && val.startsWith('0')) { el.classList.add('valid'); check.style.display = 'block'; }
+  else { el.classList.remove('valid'); check.style.display = 'none'; }
+}
+
+function toggleDarkMode() {
+  darkMode = !darkMode;
+  localStorage.setItem('darkMode', darkMode);
+  document.body.classList.toggle('dark', darkMode);
+  renderApp();
+}
+
+// ==== MAIN APP SHELL ====
+function renderApp() {
+  let navHTML = '<div id="mainContent"></div><div class="bottom-nav">';
+  navHTML += '<button class="' + (currentView === 'dashboard' ? 'active' : '') + '" onclick="currentView=\'dashboard\';renderApp()"><span class="nav-icon">\uD83D\uDCCA</span>Home</button>';
+  navHTML += '<button class="' + (currentView === 'list' ? 'active' : '') + '" onclick="currentView=\'list\';currentPage=1;renderApp()"><span class="nav-icon">\uD83D\uDCCB</span>Patients</button>';
+  navHTML += '<button class="' + (currentView === 'search' ? 'active' : '') + '" onclick="currentView=\'search\';renderApp()"><span class="nav-icon">\uD83D\uDD0D</span>Search</button>';
+  navHTML += '<button class="' + (currentView === 'new' ? 'active' : '') + '" onclick="currentView=\'new\';renderApp()"><span class="nav-icon">\u2795</span>New</button>';
+  navHTML += '<button class="' + (currentView === 'activity' ? 'active' : '') + '" onclick="currentView=\'activity\';renderApp()"><span class="nav-icon">\uD83D\uDCDC</span>Logs</button>';
+  navHTML += '<button class="' + (currentView === 'settings' ? 'active' : '') + '" onclick="currentView=\'settings\';renderApp()"><span class="nav-icon">\u2699\uFE0F</span>Settings</button>';
+  navHTML += '</div>';
+  app.innerHTML = navHTML;
+
+  if (currentView === 'dashboard') renderDashboard();
+  else if (currentView === 'list') renderPatientList();
+  else if (currentView === 'search') renderSearch();
+  else if (currentView === 'new') renderPatientForm();
+  else if (currentView === 'edit') renderPatientForm(editPatient);
+  else if (currentView === 'detail') renderPatientDetail();
+  else if (currentView === 'activity') renderActivityLog();
+  else if (currentView === 'settings') renderSettings();
+}
+
+// ==== DASHBOARD ====
+async function renderDashboard() {
+  const mc = document.getElementById('mainContent');
+  mc.innerHTML = '<div style="text-align:center;padding:40px"><div class="spinner"></div></div>';
+  try {
+    const pData = await api('/patients?limit=1');
+    const total = pData.pagination ? pData.pagination.total : 0;
+    let recentHTML = '';
+    try {
+      const aData = await api('/activity?limit=5');
+      recentHTML = '<div class="card"><div class="card-title">\uD83D\uDCDC Recent Activity</div>';
+      if (aData.logs && aData.logs.length > 0) {
+        aData.logs.forEach((l) => {
+          const badgeClass = l.action.includes('DELETE') ? 'badge-danger' : l.action.includes('CREATE') ? 'badge-success' : 'badge-primary';
+          recentHTML += '<div style="display:flex;align-items:center;gap:8px;padding:8px 0;border-bottom:1px solid var(--border);font-size:.8rem"><span class="badge ' + badgeClass + '">' + l.action + '</span><span>' + l.entity_type + '</span><span style="color:var(--text2);margin-left:auto">' + new Date(l.created_at).toLocaleTimeString() + '</span></div>';
+        });
+      } else {
+        recentHTML += '<div class="empty-state"><p>No recent activity</p></div>';
+      }
+      recentHTML += '</div>';
+    } catch (e) {}
+
+    let h = '<div class="header"><div class="header-left"><div style="font-size:1.5rem">\uD83C\uDFE5</div><div><h1>' + APP_NAME + '</h1><span class="version">v' + APP_VERSION + '</span></div></div><button class="btn btn-ghost btn-sm" onclick="toggleDarkMode()">' + (darkMode ? '\u2600\uFE0F' : '\uD83C\uDF19') + '</button></div>';
+    h += '<div class="grid2" style="margin-bottom:16px"><div class="card stat-card"><div class="stat-value">' + total + '</div><div class="stat-label">Total Patients</div></div><div class="card stat-card"><div class="stat-value">\uD83C\uDFE5</div><div class="stat-label">Hospital Records</div></div></div>';
+    h += '<div class="card"><div class="card-title">\u26A1 Quick Actions</div><div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn btn-primary btn-sm" onclick="currentView=\'new\';renderApp()">+ New Patient</button><button class="btn btn-ghost btn-sm" onclick="currentView=\'activity\';renderApp()">\uD83D\uDCDC View Logs</button><button class="btn btn-ghost btn-sm" onclick="currentView=\'settings\';renderApp()">\u2699\uFE0F Settings</button></div></div>';
+    h += recentHTML;
+    mc.innerHTML = h;
+  } catch (e) { mc.innerHTML = E(e.message); }
+}
+
+// ==== PATIENT LIST ====
+async function renderPatientList() {
+  const mc = document.getElementById('mainContent');
+  mc.innerHTML = '<div style="text-align:center;padding:40px"><div class="spinner"></div></div>';
+  try {
+    const d = await api('/patients?page=' + currentPage + '&limit=20&showDeleted=true');
+    let h = '<div class="header"><h1>\uD83D\uDCCB Patients</h1><button class="btn btn-primary btn-sm" onclick="currentView=\'new\';renderApp()">+ New</button></div>';
+    if (d.patients.length === 0) {
+      h += '<div class="empty-state"><div class="icon">\uD83D\uDCED</div><p>No patients registered yet</p></div>';
+    }
+    d.patients.forEach((p) => {
+      const idD = p.insurance_number || p.national_id_number || '\u2014';
+      const idL = p.insurance_number ? 'Ins' : p.national_id_number ? 'NatID' : 'Non-Insured';
+      h += '<div class="card patient-card" onclick="viewPatient(\'' + p.folder_number + '\')">';
+      h += '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px"><span class="patient-id">' + p.folder_number + '</span>';
+      if (p.is_deleted) h += '<span class="badge badge-danger">Deleted</span>';
+      if (!p.insurance_number && !p.national_id_number) h += '<span class="badge badge-gray">Non-Insured</span>';
+      h += '</div><div class="patient-name">' + p.first_name + ' ' + p.last_name + '</div>';
+      h += '<div class="patient-meta"><span>Age: ' + (p.age || '\u2014') + '</span><span>' + p.gender + '</span><span>' + idL + ': ' + idD + '</span><span>\uD83D\uDCDE ' + (p.phone_number || '\u2014') + '</span></div></div>';
+    });
+    if (d.pagination && d.pagination.pages > 1) {
+      h += '<div style="text-align:center;margin:20px 0;display:flex;align-items:center;justify-content:center;gap:8px">';
+      h += '<button class="btn btn-ghost btn-sm" ' + (currentPage <= 1 ? 'disabled' : '') + ' onclick="currentPage--;renderApp()">\u25C0</button>';
+      h += '<span style="font-weight:600;font-size:.85rem">Page ' + currentPage + ' of ' + d.pagination.pages + '</span>';
+      h += '<button class="btn btn-ghost btn-sm" ' + (currentPage >= d.pagination.pages ? 'disabled' : '') + ' onclick="currentPage++;renderApp()">\u25B6</button></div>';
+    }
+    mc.innerHTML = h;
+  } catch (e) { mc.innerHTML = E(e.message); }
+}
+function viewPatient(fn) { editPatient = fn; currentView = 'detail'; renderApp(); }
+
+// ==== PATIENT DETAIL ====
+async function renderPatientDetail() {
+  const mc = document.getElementById('mainContent');
+  mc.innerHTML = '<div style="text-align:center;padding:40px"><div class="spinner"></div></div>';
+  try {
+    const p = await api('/patients/' + editPatient);
+    const idD = p.insurance_number || p.national_id_number || '\u2014';
+    const idL = p.insurance_number ? 'Insurance' : p.national_id_number ? 'National ID' : 'Non-Insured';
+    let h = '<div class="header"><button class="btn btn-ghost btn-sm" onclick="currentView=\'list\';renderApp()">\u2190 Back</button><span class="patient-id">' + p.folder_number + '</span><span class="version">v' + p.version + '</span></div>';
+    h += '<div class="card"><h2 style="font-size:1.3rem">' + p.first_name + ' ' + p.last_name + '</h2><div style="margin-top:8px">';
+    if (p.is_deleted) h += '<span class="badge badge-danger">Soft Deleted</span> ';
+    if (!p.insurance_number && !p.national_id_number) h += '<span class="badge badge-gray">Non-Insured</span>';
+    h += '</div></div>';
+    h += '<div class="card"><div class="card-title">\uD83D\uDCCB Personal Information</div><div class="grid2">';
+    h += '<div><span class="label">Date of Birth</span><span>' + (p.date_of_birth ? new Date(p.date_of_birth).toLocaleDateString() + (p.is_age_estimated ? ' (Est.)' : '') : '\u2014') + '</span></div>';
+    h += '<div><span class="label">Age</span><span>' + (p.age || '\u2014') + '</span></div>';
+    h += '<div><span class="label">Gender</span><span>' + p.gender + '</span></div>';
+    h += '<div><span class="label">Phone</span><span>' + (p.phone_number || '\u2014') + '</span></div>';
+    h += '<div style="grid-column:1/-1"><span class="label">Location</span><span>' + p.location + '</span></div></div></div>';
+    h += '<div class="card"><div class="card-title">\uD83E\uDEAA Identification</div><div class="grid2"><div><span class="label">' + idL + '</span><span>' + idD + '</span></div></div></div>';
+    if (p.height || p.weight) {
+      h += '<div class="card"><div class="card-title">\uD83D\uDCCF Physical Metrics</div><div class="grid3">';
+      h += '<div><span class="label">Height</span><span>' + (p.height || '\u2014') + ' cm</span></div>';
+      h += '<div><span class="label">Weight</span><span>' + (p.weight || '\u2014') + ' kg</span></div>';
+      h += '<div><span class="label">BMI</span><span>' + (p.bmi ? p.bmi + ' (' + p.bmi_category + ')' : '\u2014') + '</span></div></div></div>';
+    }
+    h += '<div class="card"><div class="card-title">\uD83D\uDC68\u200D\uD83D\uDC69\u200D\uD83D\uDC67 Next of Kin</div><div class="grid2">';
+    h += '<div><span class="label">Name</span><span>' + (p.next_of_kin_name || '\u2014') + '</span></div>';
+    h += '<div><span class="label">Contact</span><span>' + (p.next_of_kin_contact || '\u2014') + '</span></div></div></div>';
+    h += '<div class="card"><div class="card-title">\uD83C\uDFE5 Medical</div><div class="grid2">';
+    h += '<div><span class="label">Allergies</span><span>' + (p.allergies || 'None recorded') + '</span></div>';
+    h += '<div><span class="label">Conditions</span><span>' + (p.chronic_conditions || 'None recorded') + '</span></div></div></div>';
+    h += '<div style="display:flex;gap:8px;margin-top:16px;flex-wrap:wrap">';
+    if (!p.is_deleted) {
+      h += '<button class="btn btn-primary btn-sm" onclick="editPatient=\'' + p.folder_number + '\';currentView=\'edit\';renderApp()">\u270F\uFE0F Edit</button>';
+      h += '<button class="btn btn-danger btn-sm" onclick="deletePatient(\'' + p.folder_number + '\')">\uD83D\uDDD1 Delete</button>';
+    } else {
+      h += '<button class="btn btn-success btn-sm" onclick="restorePatient(\'' + p.folder_number + '\')">\uD83D\uDD04 Restore</button>';
+      h += '<button class="btn btn-danger btn-sm" onclick="hardDeletePatient(\'' + p.folder_number + '\')">\u26A0\uFE0F Delete Forever</button>';
+    }
+    h += '</div>';
+    mc.innerHTML = h;
+  } catch (e) { mc.innerHTML = E(e.message); }
+}
+async function deletePatient(fn) {
+  if (!confirm('Soft delete this patient? It can be restored later.')) return;
+  try { await api('/patients/' + fn, { method: 'DELETE' }); currentView = 'list'; renderApp(); } catch (e) { alert(e.message); }
+}
+async function restorePatient(fn) {
+  try { await api('/patients/' + fn + '/restore', { method: 'POST' }); currentView = 'detail'; renderApp(); } catch (e) { alert(e.message); }
+}
+async function hardDeletePatient(fn) {
+  if (!confirm('PERMANENTLY delete this patient? This cannot be undone.')) return;
+  const confirmInput = prompt('Type DELETE to confirm permanent deletion:');
+  if (confirmInput !== 'DELETE') return alert('Deletion cancelled.');
+  try {
+    await api('/patients/' + fn + '/permanent', { method: 'DELETE', body: JSON.stringify({ confirmation: 'DELETE' }) });
+    currentView = 'list'; renderApp();
+  } catch (e) { alert(e.message); }
+}
+
+// ==== SEARCH ====
+function renderSearch() {
+  const mc = document.getElementById('mainContent');
+  mc.innerHTML = '<div class="header"><h1>\uD83D\uDD0D Search</h1></div><div class="card"><input class="input" id="searchInput" placeholder="Name, ID, phone, location, allergies, conditions..." oninput="doSearch()" autofocus><div id="searchResults" style="margin-top:12px"></div></div>';
+}
+let searchTimeout;
+async function doSearch() {
+  clearTimeout(searchTimeout);
+  const q = (document.getElementById('searchInput') || {}).value || '';
+  const r = document.getElementById('searchResults');
+  if (q.length < 3) { r.innerHTML = '<div class="empty-state"><p>Enter at least 3 characters to search</p></div>'; return; }
+  r.innerHTML = '<div style="text-align:center;padding:20px"><div class="spinner"></div></div>';
+  searchTimeout = setTimeout(async () => {
+    try {
+      const d = await api('/patients/search?query=' + encodeURIComponent(q) + '&limit=50');
+      if (d.patients.length === 0) {
+        r.innerHTML = '<div class="empty-state"><div class="icon">\uD83D\uDD0E</div><p>No results for "' + q + '"</p></div>';
+      } else {
+        r.innerHTML = '<p style="font-size:.8rem;color:var(--text2);margin-bottom:8px">Found ' + d.patients.length + ' patient(s)</p>' + d.patients.map((p) => {
+          const idD = p.insurance_number || p.national_id_number || 'Non-Insured';
+          return '<div class="card patient-card" onclick="viewPatient(\'' + p.folder_number + '\')"><div class="patient-id">' + p.folder_number + '</div><div class="patient-name">' + p.first_name + ' ' + p.last_name + '</div><div class="patient-meta"><span>Age: ' + (p.age || '\u2014') + '</span><span>' + p.gender + '</span><span>' + idD + '</span></div></div>';
+        }).join('');
+      }
+    } catch (e) { r.innerHTML = E(e.message); }
+  }, 400);
+}
+
+// ==== PATIENT FORM (NEW & EDIT) ====
+async function renderPatientForm(fn) {
+  const mc = document.getElementById('mainContent');
+  const isEdit = !!fn;
+  let p = {};
+  if (isEdit) { try { p = await api('/patients/' + fn); } catch (e) {} }
+  let h = '<div class="header"><button class="btn btn-ghost btn-sm" onclick="currentView=\'list\';renderApp()">\u2190 Cancel</button><span>' + (isEdit ? '\u270F\uFE0F Edit Patient' : '\u2795 New Patient') + '</span></div>';
+  if (isEdit) h += '<div class="alert" style="background:#dbeafe;color:#1e40af;border-color:#bfdbfe"><b>Folder:</b> ' + fn + ' <span style="font-size:.75rem">(cannot be changed) | Version: ' + p.version + '</span></div>';
+  h += '<div id="formError"></div>';
+  h += '<div class="card"><div class="card-title">\uD83D\uDCCB Personal Information</div>';
+  h += '<div class="grid2"><div><label class="label">First Name *</label><input class="input" id="f_fn" value="' + (p.first_name || '') + '"></div><div><label class="label">Last Name *</label><input class="input" id="f_ln" value="' + (p.last_name || '') + '"></div></div>';
+  h += '<div class="grid2" style="margin-top:10px"><div><label class="label">Date of Birth</label><input class="input" type="date" id="f_dob" value="' + (p.date_of_birth ? p.date_of_birth.split('T')[0] : '') + '"></div><div><label class="label">Age (if DOB unknown)</label><input class="input" type="number" id="f_age" value="' + (p.age || '') + '" min="0" max="150"></div></div>';
+  h += '<div class="grid2" style="margin-top:10px"><div><label class="label">Gender *</label><select class="input" id="f_gen"><option value="">Select...</option><option value="Male"' + (p.gender === 'Male' ? ' selected' : '') + '>Male</option><option value="Female"' + (p.gender === 'Female' ? ' selected' : '') + '>Female</option><option value="Other"' + (p.gender === 'Other' ? ' selected' : '') + '>Other</option></select></div><div><label class="label">Phone</label>' + phoneInput('f_ph', p.phone_number, '0201234567') + '</div></div>';
+  h += '<div style="margin-top:10px"><label class="label">Location *</label><input class="input" id="f_loc" value="' + (p.location || '') + '"></div></div>';
+  h += '<div class="card"><div class="card-title">\uD83E\uDEAA Identification</div><div class="grid2"><div><label class="label">National ID</label><input class="input" id="f_nid" value="' + (p.national_id_number || '') + '" onblur="checkID(\'national\')"></div><div><label class="label">Insurance Number</label><input class="input" id="f_ins" value="' + (p.insurance_number || '') + '" onblur="checkID(\'insurance\')"></div></div><div id="idCheck" style="margin-top:8px"></div></div>';
+  h += '<div class="card"><div class="card-title">\uD83D\uDCCF Physical</div><div class="grid2"><div><label class="label">Height (cm)</label><input class="input" type="number" id="f_ht" value="' + (p.height || '') + '" step="0.1"></div><div><label class="label">Weight (kg)</label><input class="input" type="number" id="f_wt" value="' + (p.weight || '') + '" step="0.1"></div></div></div>';
+  h += '<div class="card"><div class="card-title">\uD83D\uDC68\u200D\uD83D\uDC69\u200D\uD83D\uDC67 Next of Kin</div><div class="grid2"><div><label class="label">Name</label><input class="input" id="f_nokn" value="' + (p.next_of_kin_name || '') + '"></div><div><label class="label">Contact</label>' + phoneInput('f_nokc', p.next_of_kin_contact, '') + '</div></div></div>';
+  h += '<div class="card"><div class="card-title">\uD83C\uDFE5 Medical</div><div><label class="label">Allergies</label><textarea class="input" id="f_all" rows="2">' + (p.allergies || '') + '</textarea></div><div style="margin-top:10px"><label class="label">Chronic Conditions</label><textarea class="input" id="f_cond" rows="2">' + (p.chronic_conditions || '') + '</textarea></div></div>';
+  h += '<button class="btn btn-primary" style="width:100%;justify-content:center;padding:12px" onclick="savePatient(\'' + (fn || '') + '\', ' + (p.version || 1) + ')">' + (isEdit ? '\uD83D\uDCBE Update Patient' : '\u2705 Register Patient') + '</button>';
+  mc.innerHTML = h;
+  setTimeout(() => { validatePhone('f_ph'); validatePhone('f_nokc'); }, 100);
+}
+function getFormData(version) {
+  const val = (id) => { const el = document.getElementById(id); return el ? el.value : ''; };
+  return {
+    firstName: val('f_fn'), lastName: val('f_ln'), dateOfBirth: val('f_dob') || null,
+    age: val('f_age') ? parseInt(val('f_age')) : null, gender: val('f_gen'),
+    phoneNumber: val('f_ph') || null, location: val('f_loc'),
+    nationalIdNumber: val('f_nid') || null, insuranceNumber: val('f_ins') || null,
+    height: val('f_ht') ? parseFloat(val('f_ht')) : null, weight: val('f_wt') ? parseFloat(val('f_wt')) : null,
+    nextOfKinName: val('f_nokn') || null, nextOfKinContact: val('f_nokc') || null,
+    allergies: val('f_all') || null, chronicConditions: val('f_cond') || null,
+    version: version || 1,
+  };
+}
+async function savePatient(fn, version) {
+  const data = getFormData(version);
+  const err = document.getElementById('formError');
+  if (!data.firstName || !data.lastName || !data.gender || !data.location) {
+    err.innerHTML = E('Please fill in First name, Last name, Gender, and Location'); return;
+  }
+  try {
+    if (fn) { await api('/patients/' + fn, { method: 'PUT', body: JSON.stringify(data) }); currentView = 'detail'; editPatient = fn; }
+    else { await api('/patients', { method: 'POST', body: JSON.stringify(data) }); currentView = 'list'; }
+    renderApp();
+  } catch (e) {
+    if (e.message.indexOf('updated by someone else') !== -1) {
+      err.innerHTML = W('This record changed while you were editing. Refresh and try again.');
+    } else { err.innerHTML = E(e.message); }
+  }
+}
+async function checkID(type) {
+  const nid = (document.getElementById('f_nid') || {}).value;
+  const ins = (document.getElementById('f_ins') || {}).value;
+  const div = document.getElementById('idCheck');
+  if ((type === 'national' && !nid) || (type === 'insurance' && !ins)) { div.innerHTML = ''; return; }
+  try {
+    const d = await api('/patients/check-unique', {
+      method: 'POST',
+      body: JSON.stringify({ nationalIdNumber: type === 'national' ? nid : null, insuranceNumber: type === 'insurance' ? ins : null, excludeFolderNumber: editPatient || undefined }),
+    });
+    const r = d.nationalId || d.insurance;
+    if (r && r.exists) {
+      div.innerHTML = '<div class="alert alert-warning"><b>Already registered:</b> ' + r.patient.first_name + ' ' + r.patient.last_name + ' (' + r.patient.folder_number + ')</div>';
+    } else {
+      div.innerHTML = '<div style="color:var(--success);font-size:.85rem;margin-top:4px">\u2705 Available</div>';
+    }
+  } catch (e) {}
+}
+
+// ==== ACTIVITY LOG ====
+function clearActivityFilters() {
+  activityFilter = { action: '', patient: '', start: '', end: '' };
+  activityPage = 1;
+  renderApp();
+}
+async function renderActivityLog() {
+  const mc = document.getElementById('mainContent');
+  mc.innerHTML = '<div style="text-align:center;padding:40px"><div class="spinner"></div></div>';
+  try {
+    let params = '?page=' + activityPage + '&limit=20';
+    if (activityFilter.action) params += '&action=' + encodeURIComponent(activityFilter.action);
+    if (activityFilter.patient) params += '&patientId=' + encodeURIComponent(activityFilter.patient);
+    if (activityFilter.start) params += '&startDate=' + activityFilter.start;
+    if (activityFilter.end) params += '&endDate=' + activityFilter.end;
+    const d = await api('/activity' + params);
+    let h = '<div class="header"><h1>\uD83D\uDCDC Activity Log</h1><button class="btn btn-primary btn-sm" onclick="exportActivity()">\uD83D\uDCE5 Export CSV</button></div>';
+    h += '<div class="card" style="overflow-x:auto"><table><thead><tr><th>Time</th><th>Action</th><th>Entity</th><th>Details</th></tr></thead><tbody>';
+    if (d.logs.length === 0) h += '<tr><td colspan="4"><div class="empty-state"><p>No activity logged</p></div></td></tr>';
+    d.logs.forEach((l) => {
+      let details = ''; let detailJSON = null;
+      if (l.details) { try { detailJSON = JSON.parse(l.details); } catch (e) {} }
+      if (detailJSON) {
+        if (detailJSON.changes) details = Object.keys(detailJSON.changes).join(', ') + ' changed';
+        else if (detailJSON.initialData) details = 'Created record';
+        else if (detailJSON.mergedFrom) details = 'Merged from ' + detailJSON.mergedFrom;
+      }
+      const badgeClass = l.action.indexOf('DELETE') !== -1 ? 'badge-danger' : l.action.indexOf('CREATE') !== -1 ? 'badge-success' : 'badge-primary';
+      h += '<tr class="clickable" onclick="this.nextElementSibling.style.display=this.nextElementSibling.style.display===\'table-row\'?\'none\':\'table-row\'">';
+      h += '<td style="font-size:.72rem;white-space:nowrap">' + new Date(l.created_at).toLocaleString() + '</td>';
+      h += '<td><span class="badge ' + badgeClass + '">' + l.action + '</span></td>';
+      h += '<td>' + l.entity_type + '<br><span style="font-size:.7rem">' + (l.entity_id || '\u2014') + '</span></td>';
+      h += '<td style="font-size:.75rem">' + (details || '\u2014') + '</td></tr>';
+      if (detailJSON) h += '<tr class="expandable-row"><td colspan="4"><pre class="json-view">' + JSON.stringify(detailJSON, null, 2) + '</pre></td></tr>';
+    });
+    h += '</tbody></table></div>';
+    if (d.pagination && d.pagination.pages > 1) {
+      h += '<div style="text-align:center;margin:16px">';
+      h += '<button class="btn btn-ghost btn-sm" ' + (activityPage <= 1 ? 'disabled' : '') + ' onclick="activityPage--;renderApp()">\u25C0</button>';
+      h += '<span style="font-weight:600;margin:0 12px">' + activityPage + '/' + d.pagination.pages + '</span>';
+      h += '<button class="btn btn-ghost btn-sm" ' + (activityPage >= d.pagination.pages ? 'disabled' : '') + ' onclick="activityPage++;renderApp()">\u25B6</button></div>';
+    }
+    mc.innerHTML = h;
+  } catch (e) { mc.innerHTML = E(e.message); }
+}
+function exportActivity() {
+  let url = API + '/export/activity?';
+  if (activityFilter.start) url += 'startDate=' + activityFilter.start + '&';
+  if (activityFilter.end) url += 'endDate=' + activityFilter.end;
+  window.open(url, '_blank');
+}
+
+// ==== SETTINGS ====
+function renderSettings() {
+  const mc = document.getElementById('mainContent');
+  let h = '<div class="header"><h1>\u2699\uFE0F Settings & Tools</h1></div>';
+  h += '<div class="card"><div class="card-title">\uD83D\uDCE5 Export Data</div><div style="display:flex;gap:8px;flex-wrap:wrap">';
+  h += '<button class="btn btn-primary btn-sm" onclick="window.open(API+\'/export/patients\',\'_blank\')">\uD83D\uDCE5 Patients CSV</button>';
+  h += '<button class="btn btn-ghost btn-sm" onclick="exportActivity()">\uD83D\uDCE5 Activity CSV</button></div></div>';
+  h += '<div class="card"><div class="card-title">\uD83D\uDCE6 Backup</div><button class="btn btn-primary btn-sm" onclick="createBackup()">Create Backup Now</button><div id="backupResult" style="margin-top:8px"></div></div>';
+  h += '<div class="card"><div class="card-title">\uD83D\uDD00 Merge Patients</div><div class="grid2"><input class="input" id="mergeTarget" placeholder="Target Folder # (keep)"><input class="input" id="mergeSource" placeholder="Source Folder # (delete)"></div><button class="btn btn-warning btn-sm" style="margin-top:10px" onclick="mergePatients()">\uD83D\uDD00 Merge Patients</button><div id="mergeResult" style="margin-top:8px"></div></div>';
+  h += '<div class="card"><div class="card-title">\uD83D\uDD22 Folder Numbering</div><div id="folderFormatArea"><div class="spinner"></div></div></div>';
+  h += '<div class="card"><div class="card-title">\uD83C\uDFA8 Appearance</div><button class="btn btn-ghost btn-sm" onclick="toggleDarkMode()">' + (darkMode ? '\u2600\uFE0F Light Mode' : '\uD83C\uDF19 Dark Mode') + '</button></div>';
+  h += '<p style="text-align:center;font-size:.7rem;color:var(--text2);margin-top:24px">' + APP_NAME + ' v' + APP_VERSION + '</p>';
+  mc.innerHTML = h;
+  loadFolderFormat();
+}
+async function loadFolderFormat() {
+  const area = document.getElementById('folderFormatArea');
+  try {
+    const s = await api('/settings/folder-format');
+    area.innerHTML = '<input class="input" id="folderFormatInput" value="' + s.folder_number_format + '"><p style="font-size:.75rem;color:var(--text2);margin-top:6px">Use YYYY / MM / XXXXX placeholders, e.g. F-YYYY-XXXXX</p><button class="btn btn-primary btn-sm" style="margin-top:8px" onclick="saveFolderFormat()">Save</button><div id="folderFormatMsg" style="margin-top:8px"></div>';
+  } catch (e) { area.innerHTML = E(e.message); }
+}
+async function saveFolderFormat() {
+  const msg = document.getElementById('folderFormatMsg');
+  try {
+    await api('/settings/folder-format', { method: 'PUT', body: JSON.stringify({ folderNumberFormat: document.getElementById('folderFormatInput').value }) });
+    msg.innerHTML = S('Saved');
+  } catch (e) { msg.innerHTML = E(e.message); }
+}
+async function createBackup() {
+  try { const d = await api('/export/backup', { method: 'POST' }); document.getElementById('backupResult').innerHTML = S('Backup ready: ' + d.recordCount + ' records'); }
+  catch (e) { document.getElementById('backupResult').innerHTML = E(e.message); }
+}
+async function mergePatients() {
+  const t = (document.getElementById('mergeTarget') || {}).value;
+  const s = (document.getElementById('mergeSource') || {}).value;
+  if (!t || !s) return alert('Enter both folder numbers');
+  if (t === s) return alert('Cannot merge a record into itself');
+  if (!confirm('Merge ' + s + ' into ' + t + '? Source will be soft-deleted. This cannot be undone.')) return;
+  try {
+    const d = await api('/patients/merge', { method: 'POST', body: JSON.stringify({ targetFolderNumber: t, sourceFolderNumber: s, confirmation: 'MERGE' }) });
+    let msg = 'Patients merged.';
+    if (d.conflicts) msg += '\\nConflicts (target kept): ' + Object.keys(d.conflicts).join(', ');
+    document.getElementById('mergeResult').innerHTML = S(msg);
+  } catch (e) { document.getElementById('mergeResult').innerHTML = E(e.message); }
+}
+
+// ==== INIT ====
+renderApp();
+</script>
+</body>
+</html>
