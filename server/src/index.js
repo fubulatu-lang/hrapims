@@ -5,7 +5,7 @@ const crypto = require('crypto');
 const path = require('path');
 
 const APP_NAME = 'HRAPIMS';
-const APP_VERSION = '1.0.0';
+const APP_VERSION = '1.2.0';
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -107,6 +107,13 @@ app.use(async (req, res, next) => {
 });
 
 // ============ DOMAIN HELPERS ============
+
+// Capitalizes the first letter of every word in a name (word boundaries:
+// space, hyphen, apostrophe) so "mary-jane o'brien" -> "Mary-Jane O'Brien".
+function titleCase(str) {
+  if (!str || typeof str !== 'string') return str;
+  return str.trim().toLowerCase().replace(/(^|[\s\-'])([a-z])/g, (m, sep, ch) => sep + ch.toUpperCase());
+}
 
 function calculateAge(dob) {
   const today = new Date();
@@ -228,16 +235,30 @@ app.post('/api/patients', async (req, res) => {
       const check = await client.query('SELECT * FROM patients WHERE insurance_number = $1 AND is_hard_deleted = false', [d.insuranceNumber]);
       if (check.rows.length > 0) return res.status(409).json({ error: 'Insurance already registered', existingPatient: check.rows[0] });
     }
+    // A DOB derived from an age input (rather than typed in directly) is
+    // always an estimate. The client tells us which one the user actually
+    // edited via ageEstimated; we fall back to the old inference if it's
+    // omitted (e.g. direct API callers) so behavior doesn't silently change.
     let dob = null, age = null, estimated = false;
-    if (d.dateOfBirth) { dob = new Date(d.dateOfBirth); age = calculateAge(dob); }
-    else if (d.age) { dob = new Date(new Date().getFullYear() - d.age, 0, 1); age = d.age; estimated = true; }
+    if (d.dateOfBirth) {
+      dob = new Date(d.dateOfBirth);
+      age = d.age != null ? d.age : calculateAge(dob);
+      estimated = d.ageEstimated !== undefined ? !!d.ageEstimated : false;
+    } else if (d.age) {
+      dob = new Date(new Date().getFullYear() - d.age, 0, 1);
+      age = d.age;
+      estimated = true;
+    }
     let bmi = null, bmiCat = null;
     if (d.height && d.weight) { bmi = calculateBMI(d.weight, d.height); bmiCat = getBMICategory(bmi); }
+    const firstName = titleCase(d.firstName);
+    const lastName = titleCase(d.lastName);
+    const nextOfKinName = d.nextOfKinName ? titleCase(d.nextOfKinName) : null;
     const folderNumber = await getNextFolderNumber();
     await client.query(
       `INSERT INTO patients (folder_number, national_id_number, insurance_number, first_name, last_name, date_of_birth, age, is_age_estimated, gender, phone_number, location, height, weight, bmi, bmi_category, next_of_kin_name, next_of_kin_contact, allergies, chronic_conditions)
        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19)`,
-      [folderNumber, d.nationalIdNumber || null, d.insuranceNumber || null, d.firstName, d.lastName, dob, age, estimated, d.gender, d.phoneNumber || null, d.location, d.height || null, d.weight || null, bmi, bmiCat, d.nextOfKinName || null, d.nextOfKinContact || null, d.allergies || null, d.chronicConditions || null]
+      [folderNumber, d.nationalIdNumber || null, d.insuranceNumber || null, firstName, lastName, dob, age, estimated, d.gender, d.phoneNumber || null, d.location, d.height || null, d.weight || null, bmi, bmiCat, nextOfKinName, d.nextOfKinContact || null, d.allergies || null, d.chronicConditions || null]
     );
     await logActivity('CREATE', 'PATIENT', folderNumber, folderNumber, { initialData: d });
     const result = await client.query('SELECT * FROM patients WHERE folder_number = $1', [folderNumber]);
@@ -256,8 +277,13 @@ app.put('/api/patients/:folderNumber', async (req, res) => {
       return res.status(409).json({ error: 'Record was updated by someone else. Please refresh and try again.' });
     }
     let dob = e.date_of_birth, age = e.age, estimated = e.is_age_estimated;
-    if (d.dateOfBirth) { dob = new Date(d.dateOfBirth); age = calculateAge(dob); estimated = false; }
-    else if (d.age && d.age !== e.age) { dob = new Date(new Date().getFullYear() - d.age, 0, 1); age = d.age; estimated = true; }
+    if (d.dateOfBirth) {
+      dob = new Date(d.dateOfBirth);
+      age = d.age != null ? d.age : calculateAge(dob);
+      estimated = d.ageEstimated !== undefined ? !!d.ageEstimated : false;
+    } else if (d.age && d.age !== e.age) {
+      dob = new Date(new Date().getFullYear() - d.age, 0, 1); age = d.age; estimated = true;
+    }
     const h = d.height !== undefined ? d.height : e.height;
     const w = d.weight !== undefined ? d.weight : e.weight;
     let bmi = e.bmi, bmiCat = e.bmi_category;
@@ -267,9 +293,11 @@ app.put('/api/patients/:folderNumber', async (req, res) => {
     const newVals = [
       d.nationalIdNumber !== undefined ? d.nationalIdNumber : e.national_id_number,
       d.insuranceNumber !== undefined ? d.insuranceNumber : e.insurance_number,
-      d.firstName || e.first_name, d.lastName || e.last_name, d.gender || e.gender,
+      d.firstName ? titleCase(d.firstName) : e.first_name,
+      d.lastName ? titleCase(d.lastName) : e.last_name,
+      d.gender || e.gender,
       d.phoneNumber !== undefined ? d.phoneNumber : e.phone_number, d.location || e.location, h, w,
-      d.nextOfKinName !== undefined ? d.nextOfKinName : e.next_of_kin_name,
+      d.nextOfKinName !== undefined ? (d.nextOfKinName ? titleCase(d.nextOfKinName) : d.nextOfKinName) : e.next_of_kin_name,
       d.nextOfKinContact !== undefined ? d.nextOfKinContact : e.next_of_kin_contact,
       d.allergies !== undefined ? d.allergies : e.allergies,
       d.chronicConditions !== undefined ? d.chronicConditions : e.chronic_conditions,
