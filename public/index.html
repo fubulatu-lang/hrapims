@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, viewport-fit=cover">
 <meta name="theme-color" content="#1a4d6d">
-<title>HRAPIMS v1.2.0</title>
+<title>HRAPIMS v1.3.0</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;600;700&family=Roboto+Flex:opsz,wght@8..144,400..700&display=swap">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,300..500,0..1,0">
@@ -179,6 +179,39 @@ pre.json-view{font-size:.7rem;white-space:pre-wrap;max-height:200px;overflow-y:a
 .dev-banner{position:sticky;top:0;left:0;right:0;background:var(--md-warning-container);color:var(--md-on-warning-container);padding:10px 16px;text-align:center;z-index:60;font-weight:600;font-size:.76rem;display:flex;align-items:center;justify-content:center;gap:8px}
 .dev-banner .material-symbols-outlined{font-size:18px}
 
+/* ---- Login flow ---- */
+.login-shell{min-height:100vh;min-height:100dvh;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:24px 20px;max-width:440px;margin:0 auto}
+.login-logo{width:64px;height:64px;border-radius:var(--shape-xl);background:var(--md-primary-container);color:var(--md-on-primary-container);display:flex;align-items:center;justify-content:center;margin-bottom:16px}
+.login-logo .material-symbols-outlined{font-size:34px}
+.login-title{font-size:1.4rem;font-weight:600;color:var(--md-on-surface);text-align:center}
+.login-sub{font-size:.82rem;color:var(--md-on-surface-variant);text-align:center;margin-top:4px;margin-bottom:28px}
+.role-card{width:100%;display:flex;align-items:center;gap:16px;padding:20px;border-radius:var(--shape-lg);background:var(--md-surface-container-low);border:1.5px solid var(--md-outline-variant);margin-bottom:14px;cursor:pointer;transition:box-shadow .15s,border-color .15s;text-align:left}
+.role-card:hover{box-shadow:var(--e1);border-color:var(--md-primary)}
+.role-card:active{transform:scale(.98)}
+.role-card .role-icon{width:48px;height:48px;border-radius:var(--shape-full);background:var(--md-primary-container);color:var(--md-on-primary-container);display:flex;align-items:center;justify-content:center;flex-shrink:0}
+.role-card .role-icon .material-symbols-outlined{font-size:26px}
+.role-card h3{font-size:1rem;font-weight:600;color:var(--md-on-surface)}
+.role-card p{font-size:.78rem;color:var(--md-on-surface-variant);margin-top:2px}
+.material-symbols-outlined.chev{margin-left:auto;color:var(--md-on-surface-variant);flex-shrink:0}
+
+.staff-picker-list{width:100%}
+.staff-pick-item{display:flex;align-items:center;gap:14px;padding:14px 16px;border-radius:var(--shape-lg);background:var(--md-surface-container-low);margin-bottom:10px;cursor:pointer;transition:box-shadow .15s}
+.staff-pick-item:hover{box-shadow:var(--e1)}
+.staff-pick-item:active{transform:scale(.98)}
+
+.avatar-lg{width:72px;height:72px;border-radius:var(--shape-full);background:var(--md-primary-container);color:var(--md-on-primary-container);display:flex;align-items:center;justify-content:center;font-weight:600;font-size:1.6rem;margin-bottom:14px}
+.pin-dots{display:flex;gap:16px;margin:8px 0 28px}
+.pin-dot{width:16px;height:16px;border-radius:50%;border:2px solid var(--md-outline);transition:background .1s,border-color .1s}
+.pin-dot.filled{background:var(--md-primary);border-color:var(--md-primary)}
+.pin-dot.err{border-color:var(--md-error);background:var(--md-error)}
+.pin-keypad{display:grid;grid-template-columns:repeat(3,72px);gap:14px;justify-content:center}
+.pin-key{width:72px;height:72px;border-radius:50%;border:none;background:var(--md-surface-container-high);color:var(--md-on-surface);font-size:1.5rem;font-weight:500;cursor:pointer;font-family:var(--font);display:flex;align-items:center;justify-content:center}
+.pin-key:active{background:var(--md-secondary-container);transform:scale(.95)}
+.pin-key.ghost{background:transparent}
+.shake{animation:shakeX .35s}
+@keyframes shakeX{0%,100%{transform:translateX(0)}20%{transform:translateX(-8px)}40%{transform:translateX(8px)}60%{transform:translateX(-6px)}80%{transform:translateX(6px)}}
+.idle-warning{position:fixed;top:0;left:0;right:0;background:var(--md-warning-container);color:var(--md-on-warning-container);padding:12px 16px;text-align:center;z-index:300;font-weight:600;font-size:.82rem;display:flex;align-items:center;justify-content:center;gap:10px;flex-wrap:wrap}
+
 .section-header{font-size:.7rem;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--md-on-surface-variant);margin:20px 4px 8px}
 .section-header:first-child{margin-top:4px}
 .divider{height:1px;background:var(--md-outline-variant);margin:16px 0}
@@ -191,13 +224,25 @@ pre.json-view{font-size:.7rem;white-space:pre-wrap;max-height:200px;overflow-y:a
 <script>
 const API = '/api';
 const APP_NAME = 'HRAPIMS';
-const APP_VERSION = '1.2.0';
+const APP_VERSION = '1.3.0';
+const IDLE_LIMIT_MS = 20 * 60 * 1000;   // auto sign-out shared terminals after 20 idle minutes
+const IDLE_WARN_MS = 60 * 1000;         // show a warning 60s before that
 
 let currentView = 'dashboard', currentPage = 1, editPatient = null;
 let activityFilter = { action: '', patient: '', start: '', end: '' };
 let activityPage = 1;
 let darkMode = localStorage.getItem('darkMode') === 'true';
 let dobSource = null; // 'dob' | 'age' | null — tracks which field the user actually edited
+
+// ---- Session (set on login, cleared on logout / expiry) ----
+let session = null; // { token, staff:{id,firstName,lastName,role} }
+try { session = JSON.parse(localStorage.getItem('session') || 'null'); } catch (e) { session = null; }
+let loginStep = 'role';      // 'role' | 'picker' | 'pin' | 'changePin'
+let loginRole = null;        // 'STAFF' | 'ADMIN' — which picker to show
+let loginStaff = null;       // {id, first_name, last_name} chosen from the picker
+let pinEntry = '';
+let pinError = '';
+let idleTimer = null, idleWarnTimer = null;
 
 const app = document.getElementById('app');
 if (darkMode) document.body.classList.add('dark');
@@ -217,8 +262,11 @@ function initials(first, last) {
 }
 
 async function api(path, options = {}) {
-  const res = await fetch(API + path, { ...options, headers: { 'Content-Type': 'application/json', ...(options.headers || {}) } });
+  const headers = { 'Content-Type': 'application/json', ...(options.headers || {}) };
+  if (session && session.token) headers['Authorization'] = 'Bearer ' + session.token;
+  const res = await fetch(API + path, { ...options, headers });
   const data = await res.json().catch(() => ({}));
+  if (res.status === 401) { endSession(); throw new Error(data.error || 'Session expired'); }
   if (!res.ok) throw new Error(data.error || 'Request failed');
   return data;
 }
@@ -279,6 +327,146 @@ function toggleDarkMode() {
   renderApp();
 }
 
+// ============ AUTH / LOGIN ============
+function startSession(token, staff) {
+  session = { token, staff };
+  localStorage.setItem('session', JSON.stringify(session));
+  loginStep = 'role'; loginRole = null; loginStaff = null; pinEntry = ''; pinError = '';
+  currentView = 'dashboard';
+  renderApp();
+}
+function endSession() {
+  clearTimeout(idleTimer); clearTimeout(idleWarnTimer);
+  session = null;
+  localStorage.removeItem('session');
+  loginStep = 'role'; loginRole = null; loginStaff = null; pinEntry = ''; pinError = '';
+  currentView = 'dashboard';
+  renderApp();
+}
+function logout() {
+  if (confirm('Sign out of ' + APP_NAME + '?')) endSession();
+}
+function resetIdleTimer() {
+  clearTimeout(idleTimer); clearTimeout(idleWarnTimer);
+  document.getElementById('idleWarning')?.remove();
+  if (!session) return;
+  idleWarnTimer = setTimeout(() => {
+    const b = document.createElement('div');
+    b.id = 'idleWarning'; b.className = 'idle-warning';
+    b.innerHTML = icon('schedule') + '<span>You\'ll be signed out in 1 minute due to inactivity.</span><button class="btn btn-filled btn-xs" onclick="resetIdleTimer()">Stay signed in</button>';
+    document.body.appendChild(b);
+  }, IDLE_LIMIT_MS - IDLE_WARN_MS);
+  idleTimer = setTimeout(() => { endSession(); }, IDLE_LIMIT_MS);
+}
+['click', 'touchstart', 'keydown'].forEach((evt) => document.addEventListener(evt, () => { if (session) resetIdleTimer(); }));
+
+function renderLoginScreen() {
+  app.innerHTML = '<div class="login-shell" id="loginShell"></div>';
+  const shell = document.getElementById('loginShell');
+  if (loginStep === 'role') shell.innerHTML = roleSelectHTML();
+  else if (loginStep === 'picker') { shell.innerHTML = staffPickerHTML(); loadStaffPicker(); }
+  else if (loginStep === 'pin') shell.innerHTML = pinPadHTML();
+  else if (loginStep === 'changePin') shell.innerHTML = changePinHTML();
+}
+function roleSelectHTML() {
+  return '<div class="login-logo">' + icon('local_hospital') + '</div>' +
+    '<div class="login-title">' + APP_NAME + '</div>' +
+    '<div class="login-sub">Hospital Records &amp; Patient Information Management</div>' +
+    '<button class="role-card" onclick="selectLoginRole(\'STAFF\')"><div class="role-icon">' + icon('badge') + '</div><div><h3>Staff</h3><p>Register, search and update patient records</p></div>' + icon('chevron_right', 'chev') + '</button>' +
+    '<button class="role-card" onclick="selectLoginRole(\'ADMIN\')"><div class="role-icon">' + icon('admin_panel_settings') + '</div><div><h3>Administrator</h3><p>Full access plus staff account management</p></div>' + icon('chevron_right', 'chev') + '</button>';
+}
+function selectLoginRole(role) { loginRole = role; loginStep = 'picker'; renderLoginScreen(); }
+function staffPickerHTML() {
+  return backRow('role') +
+    '<div class="login-title" style="margin-top:8px">' + (loginRole === 'ADMIN' ? 'Administrator Sign In' : 'Staff Sign In') + '</div>' +
+    '<div class="login-sub">Tap your name to continue</div>' +
+    '<div class="staff-picker-list" id="staffPickerList"><div style="text-align:center;padding:20px"><div class="spinner"></div></div></div>';
+}
+function backRow(step) {
+  return '<button class="icon-btn" style="align-self:flex-start;margin-bottom:8px" onclick="loginStep=\'' + step + '\';renderLoginScreen()">' + icon('arrow_back') + '</button>';
+}
+async function loadStaffPicker() {
+  const list = document.getElementById('staffPickerList');
+  try {
+    const res = await fetch(API + '/staff/directory?role=' + loginRole);
+    const d = await res.json();
+    if (!d.staff || d.staff.length === 0) {
+      list.innerHTML = '<div class="empty-state">' + icon('person_off') + '<p>No ' + (loginRole === 'ADMIN' ? 'administrator' : 'staff') + ' accounts yet.<br>Ask an administrator to create one.</p></div>';
+      return;
+    }
+    list.innerHTML = d.staff.map((s) =>
+      '<button class="staff-pick-item" onclick=\'selectStaffForLogin(' + JSON.stringify(s).replace(/'/g, '&#39;') + ')\'>' +
+      '<div class="patient-avatar">' + initials(s.first_name, s.last_name) + '</div><div class="patient-name">' + titleCase(s.first_name) + ' ' + titleCase(s.last_name) + '</div>' +
+      icon('chevron_right', 'chev') + '</button>'
+    ).join('');
+  } catch (e) { list.innerHTML = E('Could not load staff list. Check your connection.'); }
+}
+function selectStaffForLogin(staff) { loginStaff = staff; pinEntry = ''; pinError = ''; loginStep = 'pin'; renderLoginScreen(); }
+function pinPadHTML() {
+  const dots = [0, 1, 2, 3].map((i) =>
+    '<div class="pin-dot ' + (pinError ? (i < 4 ? 'err' : '') : (i < pinEntry.length ? 'filled' : '')) + '"></div>'
+  ).join('');
+  const keys = ['1', '2', '3', '4', '5', '6', '7', '8', '9', '', '0', 'back'];
+  const keypad = keys.map((k) => {
+    if (k === '') return '<div></div>';
+    if (k === 'back') return '<button class="pin-key ghost" onclick="pinBackspace()">' + icon('backspace') + '</button>';
+    return '<button class="pin-key" onclick="pinDigit(\'' + k + '\')">' + k + '</button>';
+  }).join('');
+  return backRow('picker') +
+    '<div class="avatar-lg">' + initials(loginStaff.first_name, loginStaff.last_name) + '</div>' +
+    '<div class="login-title">' + titleCase(loginStaff.first_name) + ' ' + titleCase(loginStaff.last_name) + '</div>' +
+    '<div class="login-sub">Enter your 4-digit PIN</div>' +
+    '<div class="pin-dots" id="pinDots">' + dots + '</div>' +
+    (pinError ? '<div class="field-error" style="margin-bottom:16px">' + icon('error') + '<span>' + pinError + '</span></div>' : '') +
+    '<div class="pin-keypad" id="pinKeypad">' + keypad + '</div>';
+}
+function pinDigit(d) {
+  if (pinEntry.length >= 4) return;
+  pinError = '';
+  pinEntry += d;
+  renderLoginScreen();
+  if (pinEntry.length === 4) submitPin();
+}
+function pinBackspace() { pinEntry = pinEntry.slice(0, -1); pinError = ''; renderLoginScreen(); }
+async function submitPin() {
+  try {
+    const res = await fetch(API + '/auth/login', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ staffId: loginStaff.id, pin: pinEntry }) });
+    const d = await res.json();
+    if (!res.ok) throw new Error(d.error || 'Sign in failed');
+    if (d.staff.mustChangePin) {
+      session = { token: d.token, staff: d.staff };
+      loginStep = 'changePin'; pinEntry = ''; renderLoginScreen();
+    } else {
+      startSession(d.token, d.staff);
+    }
+  } catch (e) {
+    pinError = e.message; pinEntry = '';
+    renderLoginScreen();
+    document.getElementById('pinDots')?.classList.add('shake');
+  }
+}
+function changePinHTML() {
+  return '<div class="login-logo">' + icon('lock_reset') + '</div>' +
+    '<div class="login-title">Set a New PIN</div>' +
+    '<div class="login-sub">Choose a 4-digit PIN only you know. You\'ll use it every time you sign in.</div>' +
+    '<div id="changePinError" style="width:100%"></div>' +
+    '<div class="field-group" style="width:100%"><label class="label">New PIN</label><input class="input" type="password" inputmode="numeric" maxlength="4" id="newPin1" placeholder="••••"></div>' +
+    '<div class="field-group" style="width:100%"><label class="label">Confirm PIN</label><input class="input" type="password" inputmode="numeric" maxlength="4" id="newPin2" placeholder="••••"></div>' +
+    '<button class="btn btn-filled btn-block" onclick="submitChangePin()">' + icon('check_circle') + 'Save &amp; Continue</button>';
+}
+async function submitChangePin() {
+  const p1 = document.getElementById('newPin1').value, p2 = document.getElementById('newPin2').value;
+  const err = document.getElementById('changePinError');
+  if (!/^[0-9]{4}$/.test(p1)) { err.innerHTML = E('PIN must be exactly 4 digits'); return; }
+  if (p1 !== p2) { err.innerHTML = E('PINs do not match'); return; }
+  try {
+    await api('/auth/change-pin', { method: 'POST', body: JSON.stringify({ newPin: p1 }) });
+    session.staff.mustChangePin = false;
+    localStorage.setItem('session', JSON.stringify(session));
+    startSession(session.token, session.staff);
+  } catch (e) { err.innerHTML = E(e.message); }
+}
+
 // ============ APP SHELL ============
 const NAV_ITEMS = [
   { id: 'dashboard', label: 'Home', icon: 'home' },
@@ -298,9 +486,10 @@ function topBar(title, sub, leading, trailing) {
 function backBtn(view) { return '<button class="icon-btn" onclick="goto(\'' + view + '\')">' + icon('arrow_back') + '</button>'; }
 
 function renderApp() {
+  if (!session) { renderLoginScreen(); return; }
+  resetIdleTimer();
   const showFab = ['dashboard', 'list'].includes(currentView);
-  let h = '<div id="devBanner" class="dev-banner">' + icon('warning') + '<span>No login is enabled — anyone with this URL has full access to all patient records.</span></div>';
-  h += '<div id="mainContent"></div>';
+  let h = '<div id="mainContent"></div>';
   if (showFab) h += '<button class="fab fab-extended" onclick="goto(\'new\')">' + icon('add') + '<span>New Patient</span></button>';
   h += '<div class="nav-bar">' + NAV_ITEMS.map(n =>
     '<button class="nav-item ' + (currentView === n.id ? 'active' : '') + '" onclick="goto(\'' + n.id + '\')">' +
@@ -316,12 +505,13 @@ function renderApp() {
   else if (currentView === 'detail') renderPatientDetail();
   else if (currentView === 'activity') renderActivityLog();
   else if (currentView === 'settings') renderSettings();
+  else if (currentView === 'staffManage') renderStaffManage();
 }
 
 // ============ DASHBOARD ============
 async function renderDashboard() {
   const mc = document.getElementById('mainContent');
-  mc.innerHTML = topBar(APP_NAME, 'v' + APP_VERSION + ' · Hospital Records', '', '<button class="icon-btn" onclick="toggleDarkMode()">' + icon(darkMode ? 'light_mode' : 'dark_mode') + '</button>') + '<div style="text-align:center;padding:40px"><div class="spinner"></div></div>';
+  mc.innerHTML = topBar(APP_NAME, 'Signed in as ' + titleCase(session.staff.firstName) + ' · ' + (session.staff.role === 'ADMIN' ? 'Administrator' : 'Staff'), '', '<button class="icon-btn" onclick="toggleDarkMode()">' + icon(darkMode ? 'light_mode' : 'dark_mode') + '</button><button class="icon-btn" onclick="logout()">' + icon('logout') + '</button>') + '<div style="text-align:center;padding:40px"><div class="spinner"></div></div>';
   try {
     const pData = await api('/patients?limit=1');
     const total = pData.pagination ? pData.pagination.total : 0;
@@ -340,9 +530,9 @@ async function renderDashboard() {
       recentHTML += '</div>';
     } catch (e) {}
 
-    let h = topBar(APP_NAME, 'v' + APP_VERSION + ' · Hospital Records', '', '<button class="icon-btn" onclick="toggleDarkMode()">' + icon(darkMode ? 'light_mode' : 'dark_mode') + '</button>');
+    let h = topBar(APP_NAME, 'Signed in as ' + titleCase(session.staff.firstName) + ' · ' + (session.staff.role === 'ADMIN' ? 'Administrator' : 'Staff'), '', '<button class="icon-btn" onclick="toggleDarkMode()">' + icon(darkMode ? 'light_mode' : 'dark_mode') + '</button><button class="icon-btn" onclick="logout()">' + icon('logout') + '</button>');
     h += '<div class="grid2" style="margin-bottom:12px;gap:12px"><div class="card elevated stat-card"><div class="stat-value">' + total + '</div><div class="stat-label">Total Patients</div></div><div class="card elevated stat-card">' + icon('local_hospital', 'stat-value') + '<div class="stat-label">Hospital Records</div></div></div>';
-    h += '<div class="card elevated"><div class="card-title">' + icon('bolt') + 'Quick Actions</div><div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn btn-tonal btn-sm" onclick="goto(\'new\')">' + icon('person_add') + 'New Patient</button><button class="btn btn-tonal btn-sm" onclick="goto(\'activity\')">' + icon('history') + 'View Logs</button><button class="btn btn-tonal btn-sm" onclick="goto(\'settings\')">' + icon('settings') + 'Settings</button></div></div>';
+    h += '<div class="card elevated"><div class="card-title">' + icon('bolt') + 'Quick Actions</div><div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn btn-tonal btn-sm" onclick="goto(\'new\')">' + icon('person_add') + 'New Patient</button><button class="btn btn-tonal btn-sm" onclick="goto(\'activity\')">' + icon('history') + 'View Logs</button>' + (session.staff.role === 'ADMIN' ? '<button class="btn btn-tonal btn-sm" onclick="goto(\'staffManage\')">' + icon('groups') + 'Manage Staff</button>' : '') + '<button class="btn btn-tonal btn-sm" onclick="goto(\'settings\')">' + icon('settings') + 'Settings</button></div></div>';
     h += recentHTML;
     mc.innerHTML = h;
   } catch (e) { mc.innerHTML = topBar(APP_NAME, null) + E(e.message); }
@@ -391,9 +581,11 @@ function toggleDetailMenu(ev) {
   if (!p.is_deleted) {
     items += '<button class="menu-item" onclick="closeMenus();editPatient=\'' + p.folder_number + '\';currentView=\'edit\';renderApp()">' + icon('edit') + 'Edit record</button>';
     items += '<button class="menu-item danger" onclick="closeMenus();deletePatient(\'' + p.folder_number + '\')">' + icon('delete') + 'Delete record</button>';
-  } else {
+  } else if (session.staff.role === 'ADMIN') {
     items += '<button class="menu-item" onclick="closeMenus();restorePatient(\'' + p.folder_number + '\')">' + icon('restore_page') + 'Restore record</button>';
     items += '<button class="menu-item danger" onclick="closeMenus();hardDeletePatient(\'' + p.folder_number + '\')">' + icon('delete_forever') + 'Delete forever</button>';
+  } else {
+    items += '<div style="padding:12px 14px;font-size:.8rem;color:var(--md-on-surface-variant)">Deleted records can only be restored by an administrator.</div>';
   }
   const overlay = document.createElement('div');
   overlay.className = 'overlay'; overlay.style.background = 'transparent'; overlay.id = 'menuOverlay';
@@ -699,23 +891,32 @@ function downloadActivity() {
 // ============ SETTINGS ============
 function renderSettings() {
   const mc = document.getElementById('mainContent');
+  const isAdmin = session.staff.role === 'ADMIN';
   let h = topBar('Settings');
+  h += '<div class="section-header">Account</div>';
+  h += '<div class="card elevated" style="display:flex;align-items:center;gap:14px"><div class="patient-avatar">' + initials(session.staff.firstName, session.staff.lastName) + '</div><div style="flex:1"><div class="patient-name">' + titleCase(session.staff.firstName) + ' ' + titleCase(session.staff.lastName) + '</div><span class="chip ' + (isAdmin ? 'chip-primary' : 'chip-neutral') + '">' + (isAdmin ? 'Administrator' : 'Staff') + '</span></div><button class="btn btn-outlined btn-sm" onclick="logout()">' + icon('logout') + 'Sign Out</button></div>';
+  if (isAdmin) {
+    h += '<div class="section-header">Staff Accounts</div>';
+    h += '<div class="card"><div class="card-title">' + icon('groups') + 'Manage Staff</div><p style="font-size:.8rem;color:var(--md-on-surface-variant);margin-bottom:12px">Add staff and administrator accounts, reset PINs, or deactivate access.</p><button class="btn btn-tonal btn-sm" onclick="goto(\'staffManage\')">' + icon('manage_accounts') + 'Open Staff Management</button></div>';
+  }
   h += '<div class="section-header">Data Export</div>';
   h += '<div class="card"><div class="card-title">' + icon('download') + 'Export Data</div><div style="display:flex;gap:8px;flex-wrap:wrap">';
   h += '<button class="btn btn-tonal btn-sm" onclick="window.open(API+\'/export/patients\',\'_blank\')">' + icon('description') + 'Patients CSV</button>';
   h += '<button class="btn btn-outlined btn-sm" onclick="downloadActivity()">' + icon('description') + 'Activity CSV</button></div></div>';
   h += '<div class="section-header">Backup &amp; Maintenance</div>';
   h += '<div class="card"><div class="card-title">' + icon('backup') + 'Backup</div><button class="btn btn-tonal btn-sm" onclick="createBackup()">Create Backup Now</button><div id="backupResult" style="margin-top:10px"></div></div>';
-  h += '<div class="card"><div class="card-title">' + icon('merge_type') + 'Merge Patients</div><div class="row">';
-  h += '<div class="field-group"><input class="input" id="mergeTarget" placeholder="Target Folder # (keep)"></div>';
-  h += '<div class="field-group"><input class="input" id="mergeSource" placeholder="Source Folder # (delete)"></div></div>';
-  h += '<button class="btn btn-warning btn-sm" onclick="mergePatients()">' + icon('merge_type') + 'Merge Patients</button><div id="mergeResult" style="margin-top:10px"></div></div>';
-  h += '<div class="card"><div class="card-title">' + icon('tag') + 'Folder Numbering</div><div id="folderFormatArea"><div class="spinner"></div></div></div>';
+  if (isAdmin) {
+    h += '<div class="card"><div class="card-title">' + icon('merge_type') + 'Merge Patients</div><div class="row">';
+    h += '<div class="field-group"><input class="input" id="mergeTarget" placeholder="Target Folder # (keep)"></div>';
+    h += '<div class="field-group"><input class="input" id="mergeSource" placeholder="Source Folder # (delete)"></div></div>';
+    h += '<button class="btn btn-warning btn-sm" onclick="mergePatients()">' + icon('merge_type') + 'Merge Patients</button><div id="mergeResult" style="margin-top:10px"></div></div>';
+    h += '<div class="card"><div class="card-title">' + icon('tag') + 'Folder Numbering</div><div id="folderFormatArea"><div class="spinner"></div></div></div>';
+  }
   h += '<div class="section-header">Appearance</div>';
   h += '<div class="card"><button class="btn btn-tonal btn-sm" onclick="toggleDarkMode()">' + icon(darkMode ? 'light_mode' : 'dark_mode') + (darkMode ? 'Light Mode' : 'Dark Mode') + '</button></div>';
   h += '<p style="text-align:center;font-size:.7rem;color:var(--md-on-surface-variant);margin-top:24px">' + APP_NAME + ' v' + APP_VERSION + '</p>';
   mc.innerHTML = h;
-  loadFolderFormat();
+  if (isAdmin) loadFolderFormat();
 }
 async function loadFolderFormat() {
   const area = document.getElementById('folderFormatArea');
@@ -747,6 +948,110 @@ async function mergePatients() {
     if (d.conflicts) msg += '\n Conflicts (target kept): ' + Object.keys(d.conflicts).join(', ');
     document.getElementById('mergeResult').innerHTML = S(msg);
   } catch (e) { document.getElementById('mergeResult').innerHTML = E(e.message); }
+}
+
+// ============ STAFF MANAGEMENT (admin only) ============
+async function renderStaffManage() {
+  const mc = document.getElementById('mainContent');
+  if (session.staff.role !== 'ADMIN') { mc.innerHTML = topBar('Staff Management', null, backBtn('settings')) + E('Administrator access required'); return; }
+  mc.innerHTML = topBar('Staff Management', null, backBtn('settings'), '<button class="icon-btn filled-tonal" onclick="showCreateStaffModal()">' + icon('person_add') + '</button>') + '<div style="text-align:center;padding:40px"><div class="spinner"></div></div>';
+  try {
+    const d = await api('/staff');
+    let h = topBar('Staff Management', d.staff.length + ' accounts', backBtn('settings'), '<button class="icon-btn filled-tonal" onclick="showCreateStaffModal()">' + icon('person_add') + '</button>');
+    if (d.staff.length === 0) {
+      h += '<div class="empty-state">' + icon('group_off') + '<p>No staff accounts yet</p></div>';
+    }
+    d.staff.forEach((s) => {
+      const locked = s.locked_until && new Date(s.locked_until) > new Date();
+      h += '<div class="card elevated" style="display:flex;align-items:center;gap:14px">';
+      h += '<div class="patient-avatar">' + initials(s.first_name, s.last_name) + '</div>';
+      h += '<div style="flex:1;min-width:0"><div class="patient-name">' + titleCase(s.first_name) + ' ' + titleCase(s.last_name) + '</div>';
+      h += '<div class="patient-meta" style="margin-top:4px">';
+      h += '<span class="chip ' + (s.role === 'ADMIN' ? 'chip-primary' : 'chip-neutral') + '">' + (s.role === 'ADMIN' ? 'Administrator' : 'Staff') + '</span>';
+      if (!s.is_active) h += '<span class="chip chip-error">Inactive</span>';
+      if (locked) h += '<span class="chip chip-error pulse">Locked</span>';
+      if (s.must_change_pin) h += '<span class="chip chip-warning">PIN reset pending</span>';
+      h += '</div><div style="font-size:.7rem;color:var(--md-on-surface-variant);margin-top:4px">Last sign-in: ' + (s.last_login_at ? new Date(s.last_login_at).toLocaleString() : 'Never') + '</div></div>';
+      h += '<button class="icon-btn" onclick=\'openStaffMenu(event, ' + JSON.stringify(s).replace(/'/g, '&#39;') + ')\'>' + icon('more_vert') + '</button>';
+      h += '</div>';
+    });
+    mc.innerHTML = h;
+  } catch (e) { mc.innerHTML = topBar('Staff Management', null, backBtn('settings')) + E(e.message); }
+}
+function openStaffMenu(ev, s) {
+  closeMenus();
+  const btn = ev.currentTarget.getBoundingClientRect();
+  const isSelf = s.id === session.staff.id;
+  let items = '<button class="menu-item" onclick="closeMenus();showEditStaffModal(' + JSON.stringify(s).replace(/"/g, '&quot;') + ')">' + icon('edit') + 'Edit details</button>';
+  items += '<button class="menu-item" onclick="closeMenus();resetStaffPin(\'' + s.id + '\')">' + icon('lock_reset') + 'Reset PIN</button>';
+  if (!isSelf) items += '<button class="menu-item danger" onclick="closeMenus();deleteStaffAccount(\'' + s.id + '\',\'' + titleCase(s.first_name) + ' ' + titleCase(s.last_name) + '\')">' + icon('person_remove') + 'Remove account</button>';
+  const overlay = document.createElement('div'); overlay.className = 'overlay'; overlay.style.background = 'transparent'; overlay.id = 'menuOverlay'; overlay.onclick = closeMenus;
+  const menu = document.createElement('div'); menu.className = 'menu'; menu.id = 'detailMenu';
+  menu.style.top = Math.min(btn.bottom + 4, window.innerHeight - 200) + 'px';
+  menu.style.right = (window.innerWidth - btn.right) + 'px';
+  menu.innerHTML = items;
+  document.body.appendChild(overlay); document.body.appendChild(menu);
+}
+function showCreateStaffModal() {
+  closeMenus();
+  const m = document.createElement('div');
+  m.innerHTML = '<div class="overlay" id="modalOverlay" onclick="closeStaffModal()"></div><div class="modal"><h2>' + icon('person_add') + ' Add Staff Account</h2><div id="staffModalError"></div>' +
+    '<div class="field-group"><label class="label">First Name</label><input class="input" id="sm_fn"></div>' +
+    '<div class="field-group"><label class="label">Last Name</label><input class="input" id="sm_ln"></div>' +
+    '<div class="field-group"><label class="label">Role</label><select class="input" id="sm_role"><option value="STAFF">Staff</option><option value="ADMIN">Administrator</option></select></div>' +
+    '<div style="display:flex;gap:8px;margin-top:8px"><button class="btn btn-filled" style="flex:1;justify-content:center" onclick="submitCreateStaff()">Create Account</button><button class="btn btn-text" onclick="closeStaffModal()">Cancel</button></div></div>';
+  Array.from(m.children).forEach((c) => document.body.appendChild(c));
+}
+function closeStaffModal() { document.getElementById('modalOverlay')?.remove(); document.querySelector('.modal')?.remove(); }
+async function submitCreateStaff() {
+  const err = document.getElementById('staffModalError');
+  const firstName = document.getElementById('sm_fn').value.trim();
+  const lastName = document.getElementById('sm_ln').value.trim();
+  const role = document.getElementById('sm_role').value;
+  if (!firstName || !lastName) { err.innerHTML = E('First and last name are required'); return; }
+  try {
+    const d = await api('/staff', { method: 'POST', body: JSON.stringify({ firstName, lastName, role }) });
+    closeStaffModal();
+    alert('Account created for ' + firstName + ' ' + lastName + '.\n\nTemporary PIN: ' + d.temporaryPin + '\n\nShare this PIN with them directly — they will be asked to set their own PIN on first sign-in.');
+    renderApp();
+  } catch (e) { err.innerHTML = E(e.message); }
+}
+function showEditStaffModal(s) {
+  const m = document.createElement('div');
+  m.innerHTML = '<div class="overlay" id="modalOverlay" onclick="closeStaffModal()"></div><div class="modal"><h2>' + icon('edit') + ' Edit Staff</h2><div id="staffModalError"></div>' +
+    '<div class="field-group"><label class="label">First Name</label><input class="input" id="sm_fn" value="' + titleCase(s.first_name) + '"></div>' +
+    '<div class="field-group"><label class="label">Last Name</label><input class="input" id="sm_ln" value="' + titleCase(s.last_name) + '"></div>' +
+    '<div class="field-group"><label class="label">Role</label><select class="input" id="sm_role"><option value="STAFF"' + (s.role === 'STAFF' ? ' selected' : '') + '>Staff</option><option value="ADMIN"' + (s.role === 'ADMIN' ? ' selected' : '') + '>Administrator</option></select></div>' +
+    '<div class="field-group"><label class="label">Status</label><select class="input" id="sm_active"><option value="true"' + (s.is_active ? ' selected' : '') + '>Active</option><option value="false"' + (!s.is_active ? ' selected' : '') + '>Inactive</option></select></div>' +
+    '<div style="display:flex;gap:8px;margin-top:8px"><button class="btn btn-filled" style="flex:1;justify-content:center" onclick="submitEditStaff(\'' + s.id + '\')">Save Changes</button><button class="btn btn-text" onclick="closeStaffModal()">Cancel</button></div></div>';
+  Array.from(m.children).forEach((c) => document.body.appendChild(c));
+}
+async function submitEditStaff(id) {
+  const err = document.getElementById('staffModalError');
+  try {
+    await api('/staff/' + id, {
+      method: 'PUT',
+      body: JSON.stringify({
+        firstName: document.getElementById('sm_fn').value.trim(),
+        lastName: document.getElementById('sm_ln').value.trim(),
+        role: document.getElementById('sm_role').value,
+        isActive: document.getElementById('sm_active').value === 'true',
+      }),
+    });
+    closeStaffModal(); renderApp();
+  } catch (e) { err.innerHTML = E(e.message); }
+}
+async function resetStaffPin(id) {
+  if (!confirm('Generate a new temporary PIN for this account?')) return;
+  try {
+    const d = await api('/staff/' + id + '/reset-pin', { method: 'POST' });
+    alert('New temporary PIN: ' + d.temporaryPin + '\n\nShare this PIN with them directly — they will be asked to set their own PIN on next sign-in.');
+    renderApp();
+  } catch (e) { alert(e.message); }
+}
+async function deleteStaffAccount(id, name) {
+  if (!confirm('Remove ' + name + '\'s account? This cannot be undone.')) return;
+  try { await api('/staff/' + id, { method: 'DELETE' }); renderApp(); } catch (e) { alert(e.message); }
 }
 
 // ============ INIT ============

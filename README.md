@@ -1,9 +1,9 @@
-# HRAPIMS v1.0.0
+# HRAPIMS v1.3.0
 
 Hospital Records And Patient Information Management System.
-No login — anyone who opens the URL has full access. Add authentication
-back before using this with real patients; see the warning banner in the
-app itself as a standing reminder.
+Staff and administrators sign in by tapping their name and entering a
+4-digit PIN — no typing usernames on a shared hospital tablet. Sessions
+are real JWTs checked on every API call, not just a UI toggle.
 
 This guide assumes you're doing everything from a phone browser. No
 computer, no terminal, no app installs required.
@@ -54,23 +54,23 @@ computer, no terminal, no app installs required.
 1. Open **vercel.com** → **Sign up** → choose **Continue with GitHub** (this links your accounts, so you can import repos directly).
 2. Tap **Add New...** → **Project**.
 3. Find `hrapims` in the list of repos → tap **Import**.
-4. On the configuration screen:
-   - Framework Preset: leave as **Other** (or it may auto-detect Node.js — that's fine too).
-   - Expand **Environment Variables**, add:
-     - Name: `DATABASE_URL` → Value: (the Neon connection string from Part 1)
+4. On the configuration screen, expand **Environment Variables** and add:
+   - `DATABASE_URL` → the Neon connection string from Part 1
+   - `JWT_SECRET` → any long random string (e.g. mash your keyboard for 40+ characters). This signs staff sessions — set it yourself so sign-ins survive redeploys; if you skip it, one gets generated for you automatically but everyone is signed out on every deploy.
 5. Tap **Deploy**. Wait ~1 minute.
 6. You'll get a URL like `hrapims-yourname.vercel.app` — open it.
 
-You should land directly in the HRAPIMS dashboard — no login screen. There's an orange banner reminding you there's no access control yet.
+You'll land on the sign-in screen. Tap **Vercel → your project → Logs** and look for a block that says `DEFAULT ADMIN ACCOUNT CREATED` with a **Name** and a **PIN** — that's your first login. Tap **Administrator** on the sign-in screen, tap **System Administrator**, enter that PIN. You'll be asked to set a real PIN immediately — do that, then use **Settings → Manage Staff** to add real staff and admin accounts (each gets their own temporary PIN, shown once, which you share with them directly).
 
 ---
 
 ## Confirming it actually works
 
 Don't just trust a blank-looking success — test the real path:
-1. Tap **+ New** → fill in First Name, Last Name, Gender, Location → **Register Patient**.
-2. If it saves and you're taken to the patient list showing that record, your Neon connection is confirmed working end-to-end.
-3. Tap **Logs** — you should see a `CREATE` entry for the patient you just added.
+1. Sign in as the default admin (see above) and set a new PIN.
+2. Tap **+ New Patient** → fill in First Name, Last Name, Gender, Location → **Register Patient**.
+3. If it saves and you're taken to the patient record, your Neon connection is confirmed working end-to-end.
+4. Tap **Activity** — you should see a `CREATE` entry for the patient you just added, attributed to your name.
 
 If something fails at this step, check Vercel → your project → **Logs** tab for the error message, and check that `DATABASE_URL` is exactly the pooled connection string from Neon (typos here are the most common cause of failure).
 
@@ -80,9 +80,13 @@ If something fails at this step, check Vercel → your project → **Logs** tab 
 
 Every time you edit a file in GitHub (even through the mobile "edit" pencil icon) and commit it, Vercel automatically redeploys — no extra step needed.
 
-## Adding login back later
+## About the login
 
-The old login system (username/password, JWT, bcrypt) was intentionally
-left out of this rebuild for simplicity. When you're ready to add it
-back, that's a separate, scoped piece of work — the codebase here has no
-auth-shaped scaffolding left in it to conflict with a fresh design.
+This is a lightweight, real permission boundary (bcrypt-hashed PINs, JWT
+sessions checked server-side on every request, account lockout after 5
+failed attempts) — not just a UI toggle. What it deliberately does **not**
+include: password-reset-by-email, audit-grade compliance certifications,
+or multi-factor auth. If this app will hold real patient data, have
+someone who owns your compliance requirements (HIPAA or your local
+equivalent) review it before go-live.
+

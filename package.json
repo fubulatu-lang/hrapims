@@ -1,6 +1,6 @@
 {
   "name": "hrapims",
-  "version": "1.2.0",
+  "version": "1.3.0",
   "description": "Hospital Records And Patient Information Management System",
   "scripts": {
     "start": "cd server && node src/index.js"
@@ -8,6 +8,8 @@
   "dependencies": {
     "pg": "^8.13.0",
     "cors": "^2.8.5",
-    "express": "^4.18.2"
+    "express": "^4.18.2",
+    "bcryptjs": "^2.4.3",
+    "jsonwebtoken": "^9.0.2"
   }
 }

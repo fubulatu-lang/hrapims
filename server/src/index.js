@@ -3,9 +3,18 @@ const cors = require('cors');
 const { Pool } = require('pg');
 const crypto = require('crypto');
 const path = require('path');
+const bcrypt = require('bcryptjs');
+const jwt = require('jsonwebtoken');
 
 const APP_NAME = 'HRAPIMS';
-const APP_VERSION = '1.2.0';
+const APP_VERSION = '1.3.0';
+
+// In production set JWT_SECRET yourself (Vercel env var) so sessions survive
+// deploys/restarts. Falling back to a random secret is safe but means every
+// cold start invalidates existing sessions — acceptable for an MVP, called
+// out here so it's an obvious upgrade later.
+const JWT_SECRET = process.env.JWT_SECRET || crypto.randomBytes(32).toString('hex');
+const SESSION_TTL = '12h';
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -66,24 +75,64 @@ async function initDB() {
       )
     `);
     await client.query(`
+      CREATE TABLE IF NOT EXISTS staff (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        first_name TEXT NOT NULL,
+        last_name TEXT NOT NULL,
+        role TEXT NOT NULL DEFAULT 'STAFF',
+        pin_hash TEXT NOT NULL,
+        must_change_pin BOOLEAN DEFAULT true,
+        is_active BOOLEAN DEFAULT true,
+        failed_attempts INT DEFAULT 0,
+        locked_until TIMESTAMP,
+        last_login_at TIMESTAMP,
+        created_at TIMESTAMP DEFAULT NOW(),
+        updated_at TIMESTAMP DEFAULT NOW()
+      )
+    `);
+    await client.query(`
       CREATE TABLE IF NOT EXISTS activity_logs (
         id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
         action TEXT,
         entity_type TEXT,
         entity_id TEXT,
         patient_id TEXT,
+        actor_id TEXT,
+        actor_name TEXT,
         details TEXT,
         created_at TIMESTAMP DEFAULT NOW()
       )
     `);
+    // Additive migration for databases created before actor tracking existed.
+    await client.query(`ALTER TABLE activity_logs ADD COLUMN IF NOT EXISTS actor_id TEXT`);
+    await client.query(`ALTER TABLE activity_logs ADD COLUMN IF NOT EXISTS actor_name TEXT`);
     // Helpful indexes for scale — cheap to create, no-ops if already present.
     await client.query(`CREATE INDEX IF NOT EXISTS patients_active_list_idx ON patients (is_deleted, is_hard_deleted, created_at DESC)`);
     await client.query(`CREATE INDEX IF NOT EXISTS patients_name_idx ON patients (last_name, first_name)`);
     await client.query(`CREATE INDEX IF NOT EXISTS activity_created_at_idx ON activity_logs (created_at DESC)`);
+    await client.query(`CREATE INDEX IF NOT EXISTS staff_active_role_idx ON staff (is_active, role)`);
 
     const settingsCheck = await client.query("SELECT id FROM system_settings WHERE id = 'main'");
     if (settingsCheck.rows.length === 0) {
       await client.query("INSERT INTO system_settings (id) VALUES ('main')");
+    }
+
+    // Bootstrap: guarantee there is always at least one way in. Runs only
+    // when the staff table is completely empty (fresh install).
+    const staffCheck = await client.query('SELECT id FROM staff LIMIT 1');
+    if (staffCheck.rows.length === 0) {
+      const pin = String(crypto.randomInt(100000, 999999));
+      const pinHash = await bcrypt.hash(pin, 10);
+      await client.query(
+        "INSERT INTO staff (first_name, last_name, role, pin_hash, must_change_pin) VALUES ('System', 'Administrator', 'ADMIN', $1, true)",
+        [pinHash]
+      );
+      console.log('============================================================');
+      console.log('DEFAULT ADMIN ACCOUNT CREATED');
+      console.log('Name: System Administrator');
+      console.log('PIN: ' + pin);
+      console.log('You will be asked to set a new PIN on first login. SAVE THIS PIN.');
+      console.log('============================================================');
     }
     console.log(`${APP_NAME} v${APP_VERSION}: database ready`);
   } finally {
@@ -148,17 +197,103 @@ async function getNextFolderNumber() {
   return fn;
 }
 
-async function logActivity(action, entityType, entityId, patientId, details) {
+async function logActivity(req, action, entityType, entityId, patientId, details) {
+  const actor = req && req.staff ? req.staff : null;
   await pool.query(
-    'INSERT INTO activity_logs (action, entity_type, entity_id, patient_id, details) VALUES ($1,$2,$3,$4,$5)',
-    [action, entityType, entityId || null, patientId || null, details ? JSON.stringify(details) : null]
+    'INSERT INTO activity_logs (action, entity_type, entity_id, patient_id, actor_id, actor_name, details) VALUES ($1,$2,$3,$4,$5,$6,$7)',
+    [action, entityType, entityId || null, patientId || null, actor ? actor.id : null, actor ? actor.name : null, details ? JSON.stringify(details) : null]
   );
+}
+
+// ============ AUTH MIDDLEWARE ============
+
+function signSession(staff) {
+  return jwt.sign({ id: staff.id, role: staff.role, name: staff.first_name + ' ' + staff.last_name }, JWT_SECRET, { expiresIn: SESSION_TTL });
+}
+function authenticate(req, res, next) {
+  const header = req.headers.authorization || '';
+  const token = header.startsWith('Bearer ') ? header.slice(7) : null;
+  if (!token) return res.status(401).json({ error: 'Sign in required' });
+  try {
+    const payload = jwt.verify(token, JWT_SECRET);
+    req.staff = { id: payload.id, role: payload.role, name: payload.name };
+    next();
+  } catch (err) {
+    return res.status(401).json({ error: 'Session expired. Please sign in again.' });
+  }
+}
+function requireAdmin(req, res, next) {
+  if (!req.staff || req.staff.role !== 'ADMIN') return res.status(403).json({ error: 'Administrator access required' });
+  next();
 }
 
 // ============ ROUTES ============
 
 app.get('/', (req, res) => { res.sendFile(path.join(__dirname, '..', '..', 'public', 'index.html')); });
 app.get('/api/health', (req, res) => { res.json({ status: 'ok', app: APP_NAME, version: APP_VERSION }); });
+
+// ---- Public auth routes (no session required yet) ----
+
+// Names + roles only, for the tap-to-select login picker. No PINs, no
+// timestamps, nothing an unauthenticated caller shouldn't see.
+app.get('/api/staff/directory', async (req, res) => {
+  try {
+    const role = req.query.role === 'ADMIN' ? 'ADMIN' : 'STAFF';
+    const result = await pool.query(
+      'SELECT id, first_name, last_name FROM staff WHERE is_active = true AND role = $1 ORDER BY first_name, last_name',
+      [role]
+    );
+    res.json({ staff: result.rows });
+  } catch (error) { console.error(error); res.status(500).json({ error: 'Server error' }); }
+});
+
+app.post('/api/auth/login', async (req, res) => {
+  try {
+    const { staffId, pin } = req.body;
+    if (!staffId || !pin) return res.status(400).json({ error: 'Select your name and enter your PIN' });
+    const result = await pool.query('SELECT * FROM staff WHERE id = $1', [staffId]);
+    const staff = result.rows[0];
+    if (!staff || !staff.is_active) return res.status(401).json({ error: 'Incorrect PIN' });
+    if (staff.locked_until && new Date(staff.locked_until) > new Date()) {
+      return res.status(423).json({ error: 'Account locked after too many attempts. Contact an administrator.' });
+    }
+    const valid = await bcrypt.compare(pin, staff.pin_hash);
+    if (!valid) {
+      const fails = staff.failed_attempts + 1;
+      const lock = fails >= 5 ? new Date(Date.now() + 15 * 60 * 1000) : null;
+      await pool.query('UPDATE staff SET failed_attempts = $1, locked_until = $2 WHERE id = $3', [fails, lock, staff.id]);
+      return res.status(401).json({ error: lock ? 'Too many attempts. Account locked for 15 minutes.' : 'Incorrect PIN' });
+    }
+    await pool.query('UPDATE staff SET failed_attempts = 0, locked_until = NULL, last_login_at = NOW() WHERE id = $1', [staff.id]);
+    const token = signSession(staff);
+    res.json({
+      token,
+      staff: { id: staff.id, firstName: staff.first_name, lastName: staff.last_name, role: staff.role, mustChangePin: staff.must_change_pin },
+    });
+  } catch (error) { console.error(error); res.status(500).json({ error: 'Server error' }); }
+});
+
+// Every route below this line requires a valid session.
+app.use('/api', authenticate);
+
+app.get('/api/auth/me', async (req, res) => {
+  try {
+    const result = await pool.query('SELECT id, first_name, last_name, role, must_change_pin FROM staff WHERE id = $1', [req.staff.id]);
+    if (result.rows.length === 0) return res.status(404).json({ error: 'Not found' });
+    const s = result.rows[0];
+    res.json({ id: s.id, firstName: s.first_name, lastName: s.last_name, role: s.role, mustChangePin: s.must_change_pin });
+  } catch (error) { console.error(error); res.status(500).json({ error: 'Server error' }); }
+});
+
+app.post('/api/auth/change-pin', async (req, res) => {
+  try {
+    const { newPin } = req.body;
+    if (!/^[0-9]{4,6}$/.test(newPin || '')) return res.status(400).json({ error: '4-6 digit numeric PIN required' });
+    const pinHash = await bcrypt.hash(newPin, 10);
+    await pool.query('UPDATE staff SET pin_hash = $1, must_change_pin = false WHERE id = $2', [pinHash, req.staff.id]);
+    res.json({ message: 'PIN updated' });
+  } catch (error) { console.error(error); res.status(500).json({ error: 'Server error' }); }
+});
 
 app.get('/api/patients', async (req, res) => {
   try {
@@ -260,7 +395,7 @@ app.post('/api/patients', async (req, res) => {
        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19)`,
       [folderNumber, d.nationalIdNumber || null, d.insuranceNumber || null, firstName, lastName, dob, age, estimated, d.gender, d.phoneNumber || null, d.location, d.height || null, d.weight || null, bmi, bmiCat, nextOfKinName, d.nextOfKinContact || null, d.allergies || null, d.chronicConditions || null]
     );
-    await logActivity('CREATE', 'PATIENT', folderNumber, folderNumber, { initialData: d });
+    await logActivity(req, 'CREATE', 'PATIENT', folderNumber, folderNumber, { initialData: d });
     const result = await client.query('SELECT * FROM patients WHERE folder_number = $1', [folderNumber]);
     res.status(201).json(result.rows[0]);
   } catch (error) { console.error('Create error:', error.message); res.status(500).json({ error: 'Server error' }); }
@@ -309,7 +444,7 @@ app.put('/api/patients/:folderNumber', async (req, res) => {
       `UPDATE patients SET national_id_number=$1, insurance_number=$2, first_name=$3, last_name=$4, date_of_birth=$5, age=$6, is_age_estimated=$7, gender=$8, phone_number=$9, location=$10, height=$11, weight=$12, bmi=$13, bmi_category=$14, next_of_kin_name=$15, next_of_kin_contact=$16, allergies=$17, chronic_conditions=$18, version=version+1, updated_at=NOW() WHERE folder_number=$19`,
       [...newVals, dob, age, estimated, bmi, bmiCat, fn]
     );
-    await logActivity('UPDATE', 'PATIENT', fn, fn, { changes });
+    await logActivity(req, 'UPDATE', 'PATIENT', fn, fn, { changes });
     const result = await pool.query('SELECT * FROM patients WHERE folder_number = $1', [fn]);
     res.json(result.rows[0]);
   } catch (error) { console.error('Update error:', error.message); res.status(500).json({ error: 'Server error' }); }
@@ -318,29 +453,29 @@ app.put('/api/patients/:folderNumber', async (req, res) => {
 app.delete('/api/patients/:folderNumber', async (req, res) => {
   try {
     await pool.query('UPDATE patients SET is_deleted = true, deleted_at = NOW() WHERE folder_number = $1', [req.params.folderNumber]);
-    await logActivity('SOFT_DELETE', 'PATIENT', req.params.folderNumber, req.params.folderNumber);
+    await logActivity(req, 'SOFT_DELETE', 'PATIENT', req.params.folderNumber, req.params.folderNumber);
     res.json({ message: 'Deleted' });
   } catch (error) { console.error(error); res.status(500).json({ error: 'Server error' }); }
 });
 
-app.post('/api/patients/:folderNumber/restore', async (req, res) => {
+app.post('/api/patients/:folderNumber/restore', requireAdmin, async (req, res) => {
   try {
     await pool.query('UPDATE patients SET is_deleted = false, deleted_at = NULL WHERE folder_number = $1', [req.params.folderNumber]);
-    await logActivity('RESTORE', 'PATIENT', req.params.folderNumber, req.params.folderNumber);
+    await logActivity(req, 'RESTORE', 'PATIENT', req.params.folderNumber, req.params.folderNumber);
     res.json({ message: 'Restored' });
   } catch (error) { console.error(error); res.status(500).json({ error: 'Server error' }); }
 });
 
-app.delete('/api/patients/:folderNumber/permanent', async (req, res) => {
+app.delete('/api/patients/:folderNumber/permanent', requireAdmin, async (req, res) => {
   try {
     if (req.body.confirmation !== 'DELETE') return res.status(400).json({ error: 'Type DELETE to confirm' });
     await pool.query('UPDATE patients SET is_hard_deleted = true, hard_deleted_at = NOW(), is_deleted = false, deleted_at = NULL WHERE folder_number = $1', [req.params.folderNumber]);
-    await logActivity('HARD_DELETE', 'PATIENT', req.params.folderNumber, req.params.folderNumber);
+    await logActivity(req, 'HARD_DELETE', 'PATIENT', req.params.folderNumber, req.params.folderNumber);
     res.json({ message: 'Permanently deleted' });
   } catch (error) { console.error(error); res.status(500).json({ error: 'Server error' }); }
 });
 
-app.post('/api/patients/merge', async (req, res) => {
+app.post('/api/patients/merge', requireAdmin, async (req, res) => {
   try {
     const { targetFolderNumber, sourceFolderNumber, confirmation } = req.body;
     if (confirmation !== 'MERGE') return res.status(400).json({ error: 'Type MERGE to confirm' });
@@ -360,7 +495,7 @@ app.post('/api/patients/merge', async (req, res) => {
       await pool.query('UPDATE patients SET ' + setClauses.join(', ') + ' WHERE folder_number = $' + (Object.keys(updates).length + 1), [...Object.values(updates), targetFolderNumber]);
     }
     await pool.query('UPDATE patients SET is_deleted = true, deleted_at = NOW() WHERE folder_number = $1', [sourceFolderNumber]);
-    await logActivity('MERGE', 'PATIENT', targetFolderNumber, targetFolderNumber, { mergedFrom: sourceFolderNumber, conflicts });
+    await logActivity(req, 'MERGE', 'PATIENT', targetFolderNumber, targetFolderNumber, { mergedFrom: sourceFolderNumber, conflicts });
     res.json({ message: 'Merged', conflicts: Object.keys(conflicts).length > 0 ? conflicts : null });
   } catch (error) { console.error('Merge error:', error.message); res.status(500).json({ error: 'Server error' }); }
 });
@@ -389,6 +524,80 @@ app.get('/api/activity/filters', async (req, res) => {
   } catch (error) { console.error(error); res.status(500).json({ error: 'Server error' }); }
 });
 
+// ---- Staff management (admin only) ----
+
+app.get('/api/staff', requireAdmin, async (req, res) => {
+  try {
+    const result = await pool.query(
+      'SELECT id, first_name, last_name, role, is_active, must_change_pin, failed_attempts, locked_until, last_login_at, created_at FROM staff ORDER BY created_at DESC'
+    );
+    res.json({ staff: result.rows });
+  } catch (error) { console.error(error); res.status(500).json({ error: 'Server error' }); }
+});
+
+app.post('/api/staff', requireAdmin, async (req, res) => {
+  try {
+    const { firstName, lastName, role } = req.body;
+    if (!firstName || !lastName) return res.status(400).json({ error: 'First and last name are required' });
+    const finalRole = role === 'ADMIN' ? 'ADMIN' : 'STAFF';
+    const pin = String(crypto.randomInt(1000, 9999));
+    const pinHash = await bcrypt.hash(pin, 10);
+    const result = await pool.query(
+      'INSERT INTO staff (first_name, last_name, role, pin_hash, must_change_pin) VALUES ($1,$2,$3,$4,true) RETURNING id, first_name, last_name, role, is_active, created_at',
+      [titleCase(firstName), titleCase(lastName), finalRole, pinHash]
+    );
+    await logActivity(req, 'CREATE', 'STAFF', result.rows[0].id, null, { firstName, lastName, role: finalRole });
+    res.status(201).json({ ...result.rows[0], temporaryPin: pin });
+  } catch (error) { console.error(error); res.status(500).json({ error: 'Server error' }); }
+});
+
+app.put('/api/staff/:id', requireAdmin, async (req, res) => {
+  try {
+    const { firstName, lastName, role, isActive } = req.body;
+    const existing = await pool.query('SELECT * FROM staff WHERE id = $1', [req.params.id]);
+    if (existing.rows.length === 0) return res.status(404).json({ error: 'Not found' });
+    // Guard rail: never let the last active admin lock themselves (or every
+    // admin) out of the system by demoting/deactivating the final admin.
+    if ((role && role !== 'ADMIN') || isActive === false) {
+      if (existing.rows[0].role === 'ADMIN') {
+        const admins = await pool.query("SELECT COUNT(*) FROM staff WHERE role = 'ADMIN' AND is_active = true AND id != $1", [req.params.id]);
+        if (parseInt(admins.rows[0].count) === 0) return res.status(400).json({ error: 'At least one active administrator must remain' });
+      }
+    }
+    await pool.query(
+      'UPDATE staff SET first_name = COALESCE($1, first_name), last_name = COALESCE($2, last_name), role = COALESCE($3, role), is_active = COALESCE($4, is_active), updated_at = NOW() WHERE id = $5',
+      [firstName ? titleCase(firstName) : null, lastName ? titleCase(lastName) : null, role || null, isActive !== undefined ? isActive : null, req.params.id]
+    );
+    await logActivity(req, 'UPDATE', 'STAFF', req.params.id, null, { firstName, lastName, role, isActive });
+    res.json({ message: 'Updated' });
+  } catch (error) { console.error(error); res.status(500).json({ error: 'Server error' }); }
+});
+
+app.post('/api/staff/:id/reset-pin', requireAdmin, async (req, res) => {
+  try {
+    const pin = String(crypto.randomInt(1000, 9999));
+    const pinHash = await bcrypt.hash(pin, 10);
+    await pool.query('UPDATE staff SET pin_hash = $1, must_change_pin = true, failed_attempts = 0, locked_until = NULL WHERE id = $2', [pinHash, req.params.id]);
+    await logActivity(req, 'PIN_RESET', 'STAFF', req.params.id, null);
+    res.json({ temporaryPin: pin });
+  } catch (error) { console.error(error); res.status(500).json({ error: 'Server error' }); }
+});
+
+app.delete('/api/staff/:id', requireAdmin, async (req, res) => {
+  try {
+    if (req.params.id === req.staff.id) return res.status(400).json({ error: 'You cannot remove your own account' });
+    const existing = await pool.query('SELECT * FROM staff WHERE id = $1', [req.params.id]);
+    if (existing.rows.length === 0) return res.status(404).json({ error: 'Not found' });
+    if (existing.rows[0].role === 'ADMIN') {
+      const admins = await pool.query("SELECT COUNT(*) FROM staff WHERE role = 'ADMIN' AND is_active = true AND id != $1", [req.params.id]);
+      if (parseInt(admins.rows[0].count) === 0) return res.status(400).json({ error: 'At least one active administrator must remain' });
+    }
+    await pool.query('DELETE FROM staff WHERE id = $1', [req.params.id]);
+    await logActivity(req, 'DELETE', 'STAFF', req.params.id, null);
+    res.json({ message: 'Removed' });
+  } catch (error) { console.error(error); res.status(500).json({ error: 'Server error' }); }
+});
+
 app.get('/api/settings/folder-format', async (req, res) => {
   try {
     const result = await pool.query("SELECT * FROM system_settings WHERE id = 'main'");
@@ -396,7 +605,7 @@ app.get('/api/settings/folder-format', async (req, res) => {
   } catch (error) { console.error(error); res.status(500).json({ error: 'Server error' }); }
 });
 
-app.put('/api/settings/folder-format', async (req, res) => {
+app.put('/api/settings/folder-format', requireAdmin, async (req, res) => {
   try {
     const { folderNumberFormat, includeYear, includeMonth, sequenceDigits } = req.body;
     await pool.query(
@@ -438,8 +647,8 @@ app.get('/api/export/activity', async (req, res) => {
     if (req.query.startDate) { where += ` AND created_at >= $${params.length + 1}`; params.push(req.query.startDate); }
     if (req.query.endDate) { where += ` AND created_at <= $${params.length + 1}`; params.push(req.query.endDate + 'T23:59:59'); }
     const logs = await pool.query(`SELECT * FROM activity_logs WHERE ${where} ORDER BY created_at DESC`, params);
-    let csv = 'Timestamp,Action,Entity Type,Entity ID,Details\n';
-    logs.rows.forEach((l) => { csv += toCsvRow([l.created_at, l.action, l.entity_type, l.entity_id || '', l.details || '']) + '\n'; });
+    let csv = 'Timestamp,Staff,Action,Entity Type,Entity ID,Details\n';
+    logs.rows.forEach((l) => { csv += toCsvRow([l.created_at, l.actor_name || 'System', l.action, l.entity_type, l.entity_id || '', l.details || '']) + '\n'; });
     res.setHeader('Content-Type', 'text/csv');
     res.setHeader('Content-Disposition', 'attachment; filename=hrapims-activity.csv');
     res.send(csv);
