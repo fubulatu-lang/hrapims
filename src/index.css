@@ -32,6 +32,15 @@ body.dark {
   --md-outline: #8a9296; --md-outline-variant: #40484c;
   --focus-ring: 0 0 0 3px rgba(143,206,238,.35);
 }
+/* Midnight (AMOLED) layers on top of .dark: every surface tone drops to
+   true black. Content colors (primary, error, etc.) stay the same as
+   dark mode — only backgrounds change, so contrast ratios don't regress. */
+body.dark.midnight {
+  --md-background: #000000; --md-surface: #000000;
+  --md-surface-container-lowest: #000000; --md-surface-container-low: #000000;
+  --md-surface-container: #050505; --md-surface-container-high: #0d0d0d; --md-surface-container-highest: #161616;
+  --md-outline-variant: #262626;
+}
 *{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent}
 html,body,#root{height:100%}
 body{font-family:var(--font);background:var(--md-background);color:var(--md-on-background);min-height:100vh;min-height:100dvh;transition:background .25s,color .25s}
@@ -52,7 +61,7 @@ a{color:var(--md-primary)}
 .topbar{position:sticky;top:0;z-index:50;display:flex;align-items:center;gap:4px;padding:10px 8px;background:var(--md-surface-container-low);min-height:64px}
 .topbar-title{flex:1;font-size:1.35rem;font-weight:500;letter-spacing:0;color:var(--md-on-surface);padding-left:8px;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .topbar-sub{font-size:.72rem;color:var(--md-on-surface-variant);font-weight:400;display:block;padding-left:8px;margin-top:-2px}
-.icon-btn{display:flex;align-items:center;justify-content:center;width:44px;height:44px;border-radius:var(--shape-full);border:none;background:transparent;color:var(--md-on-surface-variant);cursor:pointer;transition:background .15s;flex-shrink:0}
+.icon-btn{display:flex;align-items:center;justify-content:center;width:44px;height:44px;border-radius:var(--shape-full);border:none;background:transparent;color:var(--md-on-surface-variant);cursor:pointer;transition:background .15s,transform .1s ease;flex-shrink:0}
 .icon-btn:hover{background:rgba(0,0,0,.06)}
 body.dark .icon-btn:hover{background:rgba(255,255,255,.08)}
 .icon-btn:active{transform:scale(.92)}
@@ -60,7 +69,7 @@ body.dark .icon-btn:hover{background:rgba(255,255,255,.08)}
 .icon-btn:disabled{opacity:.38;pointer-events:none}
 
 /* ---- Buttons ---- */
-.btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;padding:10px 24px;border:none;border-radius:var(--shape-full);font-size:.875rem;font-weight:500;cursor:pointer;transition:box-shadow .15s,background .15s;white-space:nowrap;font-family:var(--font);letter-spacing:.01em}
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;padding:10px 24px;border:none;border-radius:var(--shape-full);font-size:.875rem;font-weight:500;cursor:pointer;transition:box-shadow .15s,background .15s,transform .1s ease;white-space:nowrap;font-family:var(--font);letter-spacing:.01em}
 .btn .material-symbols-outlined{font-size:18px}
 .btn:active{transform:scale(.97)}
 .btn-filled{background:var(--md-primary);color:var(--md-on-primary)}
@@ -118,7 +127,7 @@ select.input{appearance:none;background-image:url("data:image/svg+xml,%3Csvg xml
 .chip-neutral{background:var(--md-surface-container-highest);color:var(--md-on-surface-variant)}
 
 /* ---- Patient / staff list cards ---- */
-.patient-card{cursor:pointer;transition:box-shadow .15s;display:flex;align-items:center;gap:14px;width:100%;text-align:left;border:none;font-family:var(--font)}
+.patient-card{cursor:pointer;transition:box-shadow .15s,transform .1s ease;display:flex;align-items:center;gap:14px;width:100%;text-align:left;border:none;font-family:var(--font)}
 .patient-card:hover{box-shadow:var(--e1)}
 .patient-card:active{transform:scale(.99)}
 .patient-avatar{width:44px;height:44px;border-radius:var(--shape-full);background:var(--md-primary-container);color:var(--md-on-primary-container);display:flex;align-items:center;justify-content:center;font-weight:600;font-size:1rem;flex-shrink:0}
@@ -140,11 +149,14 @@ select.input{appearance:none;background-image:url("data:image/svg+xml,%3Csvg xml
 .alert-info{background:var(--md-secondary-container);color:var(--md-on-secondary-container)}
 
 /* ---- Modal / menus ---- */
-.overlay{position:fixed;inset:0;background:rgba(0,0,0,.4);z-index:200;border:none;padding:0}
+.overlay{position:fixed;inset:0;background:rgba(0,0,0,.4);z-index:200;border:none;padding:0;animation:overlayIn .15s ease-out}
 .overlay.transparent{background:transparent}
-.modal{position:fixed;left:50%;top:50%;transform:translate(-50%,-50%);background:var(--md-surface-container-high);border-radius:var(--shape-xl);padding:24px;width:92%;max-width:440px;max-height:85vh;overflow-y:auto;box-shadow:var(--e3);z-index:210}
+.modal{position:fixed;left:50%;top:50%;transform:translate(-50%,-50%);background:var(--md-surface-container-high);border-radius:var(--shape-xl);padding:24px;width:92%;max-width:440px;max-height:85vh;overflow-y:auto;box-shadow:var(--e3);z-index:210;animation:modalIn .18s cubic-bezier(.2,.8,.2,1)}
+@keyframes overlayIn{from{opacity:0}to{opacity:1}}
+@keyframes modalIn{from{opacity:0;transform:translate(-50%,-50%) scale(.95)}to{opacity:1;transform:translate(-50%,-50%) scale(1)}}
 .modal h2{font-size:1.2rem;font-weight:500;margin-bottom:16px;color:var(--md-on-surface);display:flex;align-items:center;gap:10px}
-.menu{position:fixed;background:var(--md-surface-container-high);border-radius:var(--shape-md);box-shadow:var(--e2);z-index:210;min-width:200px;padding:8px;overflow:hidden}
+.menu{position:fixed;background:var(--md-surface-container-high);border-radius:var(--shape-md);box-shadow:var(--e2);z-index:210;min-width:200px;padding:8px;overflow:hidden;animation:menuIn .15s ease-out}
+@keyframes menuIn{from{opacity:0;transform:translateY(-6px)}to{opacity:1;transform:translateY(0)}}
 .menu-item{display:flex;align-items:center;gap:14px;padding:12px 14px;border-radius:var(--shape-sm);cursor:pointer;font-size:.86rem;color:var(--md-on-surface);background:none;border:none;width:100%;text-align:left;font-family:var(--font)}
 .menu-item:hover{background:var(--md-surface-container-highest)}
 .menu-item.danger{color:var(--md-error)}
@@ -153,7 +165,8 @@ select.input{appearance:none;background-image:url("data:image/svg+xml,%3Csvg xml
 
 /* ---- Bottom Navigation Bar (M3) ---- */
 .nav-bar{position:fixed;bottom:0;left:50%;transform:translateX(-50%);width:100%;max-width:720px;background:var(--md-surface-container);display:flex;z-index:100;padding:8px 4px env(safe-area-inset-bottom,8px);box-shadow:0 -1px 3px rgba(0,0,0,.08)}
-.nav-item{flex:1;display:flex;flex-direction:column;align-items:center;gap:4px;border:none;background:transparent;cursor:pointer;padding:4px 2px;font-family:var(--font)}
+.nav-item{flex:1;display:flex;flex-direction:column;align-items:center;gap:4px;border:none;background:transparent;cursor:pointer;padding:4px 2px;font-family:var(--font);transition:transform .1s ease}
+.nav-item:active{transform:scale(.92)}
 .nav-indicator{width:56px;height:28px;border-radius:var(--shape-full);display:flex;align-items:center;justify-content:center;transition:background .2s}
 .nav-item[aria-current="page"] .nav-indicator{background:var(--md-secondary-container)}
 .nav-item .material-symbols-outlined{font-size:22px;color:var(--md-on-surface-variant)}
@@ -184,7 +197,7 @@ pre.json-view{font-size:.7rem;white-space:pre-wrap;max-height:200px;overflow-y:a
 .login-logo .material-symbols-outlined{font-size:34px}
 .login-title{font-size:1.4rem;font-weight:600;color:var(--md-on-surface);text-align:center}
 .login-sub{font-size:.82rem;color:var(--md-on-surface-variant);text-align:center;margin-top:4px;margin-bottom:28px}
-.role-card{width:100%;display:flex;align-items:center;gap:16px;padding:20px;border-radius:var(--shape-lg);background:var(--md-surface-container-low);border:1.5px solid var(--md-outline-variant);margin-bottom:14px;cursor:pointer;transition:box-shadow .15s,border-color .15s;text-align:left;font-family:var(--font)}
+.role-card{width:100%;display:flex;align-items:center;gap:16px;padding:20px;border-radius:var(--shape-lg);background:var(--md-surface-container-low);border:1.5px solid var(--md-outline-variant);margin-bottom:14px;cursor:pointer;transition:box-shadow .15s,border-color .15s,transform .1s ease;text-align:left;font-family:var(--font)}
 .role-card:hover{box-shadow:var(--e1);border-color:var(--md-primary)}
 .role-card:active{transform:scale(.98)}
 .role-card .role-icon{width:48px;height:48px;border-radius:var(--shape-full);background:var(--md-primary-container);color:var(--md-on-primary-container);display:flex;align-items:center;justify-content:center;flex-shrink:0}
@@ -201,6 +214,16 @@ pre.json-view{font-size:.7rem;white-space:pre-wrap;max-height:200px;overflow-y:a
 /* ---- Skeleton loaders (loading state for cards/lists) ---- */
 .skeleton{background:linear-gradient(90deg,var(--md-surface-container-high) 25%,var(--md-surface-container-highest) 37%,var(--md-surface-container-high) 63%);background-size:400% 100%;animation:skeleton 1.4s ease infinite;border-radius:var(--shape-sm)}
 @keyframes skeleton{0%{background-position:100% 50%}100%{background-position:0 50%}}
+
+/* ---- Page transitions (bottom-nav swipe/tap) ---- */
+.page-transition{animation:slideInFromRight .22s cubic-bezier(.2,.8,.2,1)}
+.page-transition.from-left{animation-name:slideInFromLeft}
+@keyframes slideInFromRight{from{transform:translateX(28px);opacity:0}to{transform:translateX(0);opacity:1}}
+@keyframes slideInFromLeft{from{transform:translateX(-28px);opacity:0}to{transform:translateX(0);opacity:1}}
+/* Sub-pages (detail/form/staff management) get a gentler fade+rise instead
+   of the horizontal slide, since they aren't part of the swipeable tab set. */
+.page-transition.subpage{animation:pageRise .2s ease-out}
+@keyframes pageRise{from{transform:translateY(10px);opacity:0}to{transform:translateY(0);opacity:1}}
 
 @media(max-width:400px){.grid2,.grid3{grid-template-columns:1fr}}
 @media(prefers-reduced-motion:reduce){*{animation-duration:.001ms !important;transition-duration:.001ms !important}}

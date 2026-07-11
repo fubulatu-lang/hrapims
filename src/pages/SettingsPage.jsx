@@ -2,15 +2,16 @@ import { useEffect, useState } from 'react';
 import { TopBar, Card, CardTitle, Avatar, Chip, Button, TextField, Alert } from '../components/ui';
 import { useSession } from '../context/SessionContext';
 import { useNavigation } from '../context/NavigationContext';
-import { useDarkMode } from '../hooks/useDarkMode';
+import { useTheme, THEMES } from '../hooks/useTheme';
+import { HAPTIC_LEVELS, getHapticLevel, setHapticLevel, triggerHaptic } from '../lib/haptics';
+import { SOUND_LEVELS, getSoundLevel, setSoundLevel, playTouchSound } from '../lib/touchSound';
 import { api } from '../lib/api';
 
-const APP_VERSION = '2.0.0';
+const APP_VERSION = '2.1.0';
 
 export function SettingsPage() {
   const { role, isAdmin, logout } = useSession();
   const { goTo } = useNavigation();
-  const [dark, setDark] = useDarkMode();
 
   function handleSignOut() {
     if (confirm('Sign out of HRAPIMS?')) logout();
@@ -60,21 +61,82 @@ export function SettingsPage() {
 
         <div className="section-header">Backup &amp; Maintenance</div>
         <BackupCard />
-        {isAdmin && <MergeCard />}
+        <MergeCard />
         {isAdmin && <FolderFormatCard />}
 
         <div className="section-header">Appearance</div>
-        <Card>
-          <Button variant="tonal" size="sm" icon={dark ? 'light_mode' : 'dark_mode'} onClick={() => setDark((d) => !d)}>
-            {dark ? 'Light Mode' : 'Dark Mode'}
-          </Button>
-        </Card>
+        <ThemeCard />
+
+        <div className="section-header">Feedback</div>
+        <HapticsCard />
+        <SoundCard />
 
         <p style={{ textAlign: 'center', fontSize: '.7rem', color: 'var(--md-on-surface-variant)', marginTop: 24 }}>
           HRAPIMS v{APP_VERSION}
         </p>
       </div>
     </>
+  );
+}
+
+function ThemeCard() {
+  const [theme, setTheme] = useTheme();
+  return (
+    <Card>
+      <CardTitle icon="palette">Theme</CardTitle>
+      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+        {THEMES.map((t) => (
+          <Button key={t.value} variant={theme === t.value ? 'filled' : 'tonal'} size="sm" icon={t.icon} onClick={() => setTheme(t.value)}>
+            {t.label}
+          </Button>
+        ))}
+      </div>
+      {theme === 'midnight' && (
+        <p style={{ fontSize: '.72rem', color: 'var(--md-on-surface-variant)', marginTop: 10 }}>
+          True black backgrounds — easier on the eyes and battery on OLED/AMOLED screens.
+        </p>
+      )}
+    </Card>
+  );
+}
+
+function HapticsCard() {
+  const [level, setLevel] = useState(getHapticLevel());
+  function choose(v) { setHapticLevel(v); setLevel(v); triggerHaptic(); }
+  return (
+    <Card>
+      <CardTitle icon="vibration">Haptics</CardTitle>
+      <p style={{ fontSize: '.78rem', color: 'var(--md-on-surface-variant)', marginBottom: 10 }}>
+        Vibration strength when tapping buttons and navigation.
+      </p>
+      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+        {HAPTIC_LEVELS.map((h) => (
+          <Button key={h.value} variant={level === h.value ? 'filled' : 'tonal'} size="sm" onClick={() => choose(h.value)}>
+            {h.label}
+          </Button>
+        ))}
+      </div>
+    </Card>
+  );
+}
+
+function SoundCard() {
+  const [level, setLevel] = useState(getSoundLevel());
+  function choose(v) { setSoundLevel(v); setLevel(v); playTouchSound(); }
+  return (
+    <Card>
+      <CardTitle icon="volume_up">Touch Sounds</CardTitle>
+      <p style={{ fontSize: '.78rem', color: 'var(--md-on-surface-variant)', marginBottom: 10 }}>
+        Volume of the tap sound when using the app.
+      </p>
+      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+        {SOUND_LEVELS.map((s) => (
+          <Button key={s.value} variant={level === s.value ? 'filled' : 'tonal'} size="sm" onClick={() => choose(s.value)}>
+            {s.label}
+          </Button>
+        ))}
+      </div>
+    </Card>
   );
 }
 

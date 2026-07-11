@@ -1,3 +1,4 @@
+import { DateField } from '../ui/DateField';
 import { TextField } from '../ui/TextField';
 
 /**
@@ -17,9 +18,8 @@ import { TextField } from '../ui/TextField';
 export function DobAgeFields({ sync, ageError }) {
   return (
     <div className="grid2">
-      <TextField
+      <DateField
         label="Date of Birth"
-        type="date"
         value={sync.dob}
         onChange={sync.setDob}
         helperText="Fill this OR age"

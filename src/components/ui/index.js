@@ -15,3 +15,5 @@ export { BottomNav } from './BottomNav';
 export { Fab } from './Fab';
 export { Modal } from './Modal';
 export { Menu, useMenu } from './Menu';
+export { SortControl, SORT_OPTIONS } from './SortControl';
+export { DateField } from './DateField';

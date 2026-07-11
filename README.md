@@ -1,12 +1,106 @@
-# HRAPIMS v2.0.0
+# HRAPIMS v2.1.0
 
 Hospital Records And Patient Information Management System.
 
-This is a rebuild of the frontend as a proper React application (components,
-hooks, context — no more single HTML file) with a temporary **pseudo
-login**: tap "Staff" or "Administrator" and you're in, no password. The
-backend already has real credential auth ready to switch on (bcrypt +
-JWT + PIN sign-in) — see "About login" at the bottom.
+## v2.1.0 — bug fixes + new features
+
+### Fixed: the three "Request failed 500" errors
+
+All three (Recent Activity, Register Patient, Create Staff) were reported
+against a live deployment I have no access to (no logs, no DB), so this
+is a best-effort fix based on careful code review rather than a
+reproduced-and-confirmed fix. Two changes:
+
+1. **Every 500 response now includes the real error message** instead of
+   a generic "Server error" — if anything still fails, the app itself
+   will show you the actual cause, which turns "mysterious 500" into an
+   actionable message. If you hit this again, please paste back exactly
+   what the red alert says.
+2. **Hardened the folder-number sequence** (`getNextFolderNumber` in
+   `server/src/index.js`): it previously crashed with an unhelpful error
+   if the `system_settings` row was ever missing (e.g. a race on first
+   deploy). It now self-heals instead of throwing — this was the most
+   likely culprit for patient registration failing for *everyone*
+   (staff and admin alike), since both hit this exact function.
+3. Fixed a real, confirmed bug: three dormant auth routes (`DELETE
+   /api/staff/:id`, `/api/auth/me`, `/api/auth/change-pin`) referenced
+   `req.staff.id` even though `req.staff` is never set while real login
+   is switched off — any of them would have thrown. Now guarded.
+
+### Staff no longer see Activity Logs
+Removed from the bottom nav, the dashboard's "Recent Activity" card, and
+the request is never even made for a staff session (not just hidden —
+skipped entirely).
+
+### Swipe navigation + transitions
+Swipe left/right anywhere on Home, Patients, Search, Activity (admin), or
+Settings to move between them — same order as the bottom nav. Tapping the
+bottom nav directly still works and animates the same way. Sub-pages
+(patient detail/form, staff management) get a fade-and-rise entrance
+instead, and don't participate in swipe (so swiping while editing a form
+doesn't accidentally navigate away). Modals and dropdown menus now have
+entrance animations too, and every tappable element eases back after a
+press instead of snapping.
+
+### Insurance Number, National ID, Next of Kin Contact
+- **Insurance Number**: digits only, capped at 8, checkmark on the 8th
+  digit, blur triggers a database uniqueness check.
+- **National ID**: prefilled with `GHA-`, dashes auto-insert as you type
+  (`GHA-XXXXXXXXX-X`), checkmark at the 10th digit, blur triggers a
+  uniqueness check. If nothing is typed, the prefilled `GHA-` is discarded
+  (saved as empty, not as the literal string).
+- **Next of Kin Contact**: now the exact same component as the Phone
+  field (`PhoneField`, in `src/components/patients/`) — same 10-digit
+  checkmark behavior, literally shared code so they can't drift apart.
+
+### Date of Birth
+Type `DD-MM-YYYY` directly (dashes auto-insert), with a muted placeholder
+showing the format — or tap the calendar button beside the field to use
+the native date picker. Both paths feed the same underlying value.
+(`src/components/ui/DateField.jsx`)
+
+### Draft persistence + Clear button
+The New Patient form now autosaves to `localStorage` as you type. Closing
+the tab/app by accident and coming back restores exactly what was there.
+A **Clear** button next to Register/Update wipes the form (with a
+confirmation) — on the New Patient form this also clears the saved draft.
+
+### Haptics & Touch Sounds (Settings)
+Five strength levels each, 0 = off:
+- **Haptics**: Off / Light (60ms) / Medium (90ms) / Strong (120ms) / Max
+  (160ms), via the Vibration API. No-ops silently on devices/browsers
+  that don't support it (e.g. iOS Safari).
+- **Touch Sounds**: Off / Quiet / Medium / Loud / Max — a short
+  synthesized click (Web Audio oscillator), not an audio file, so there's
+  nothing extra to host or ship.
+
+Both fire automatically on every Button/IconButton/Fab/nav tap — no page
+had to be touched to wire this in (`useFeedback` hook, called from inside
+the shared components themselves).
+
+### Midnight mode
+A third theme alongside Light/Dark: true black (`#000`) backgrounds for
+OLED/AMOLED screens — saves battery and gives real blacks instead of dark
+grey. Cycle through all three from the dashboard's theme icon, or pick
+directly in Settings → Appearance.
+
+### Staff can merge patients
+The Merge Patients card in Settings is no longer admin-only.
+
+### Shared sort control
+Patients list and Search results use the exact same `SortControl`
+component and the exact same backend query parameters (`sortBy`,
+`sortDir` — Name / Recently Added / Age / Folder Number, ascending or
+descending). The choice is remembered across both screens.
+
+---
+
+## Everything below is unchanged from v2.0.0
+
+This is still a **pseudo login** (tap Staff or Administrator, no
+credentials) — see "About login" further down. Deployment (Neon +
+Vercel), the React component architecture, and the backend's business
+logic are all as described previously.
 
 ---
 

@@ -1,4 +1,5 @@
 import { Icon } from './Icon';
+import { useFeedback } from '../../hooks/useFeedback';
 
 /**
  * Material 3 style bottom navigation bar. Renders as a `<nav>` with each
@@ -18,6 +19,7 @@ import { Icon } from './Icon';
  * />
  */
 export function BottomNav({ items, activeId, onChange }) {
+  const feedback = useFeedback();
   return (
     <nav className="nav-bar" aria-label="Primary">
       {items.map((item) => {
@@ -27,7 +29,7 @@ export function BottomNav({ items, activeId, onChange }) {
             key={item.id}
             className="nav-item"
             aria-current={active ? 'page' : undefined}
-            onClick={() => onChange(item.id)}
+            onClick={() => { feedback(); onChange(item.id); }}
           >
             <span className="nav-indicator"><Icon name={item.icon} /></span>
             <span className="nav-label">{item.label}</span>

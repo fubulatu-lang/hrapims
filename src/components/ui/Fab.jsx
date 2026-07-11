@@ -1,4 +1,5 @@
 import { Icon } from './Icon';
+import { useFeedback } from '../../hooks/useFeedback';
 
 /**
  * Floating action button, fixed above the bottom nav. Use for the single
@@ -11,8 +12,9 @@ import { Icon } from './Icon';
  * @example <Fab icon="add" label="New Patient" onClick={() => navigate('new')} />
  */
 export function Fab({ icon, label, onClick }) {
+  const feedback = useFeedback();
   return (
-    <button className={`fab ${label ? 'fab-extended' : ''}`} onClick={onClick} aria-label={label || 'Action'}>
+    <button className={`fab ${label ? 'fab-extended' : ''}`} onClick={(e) => { feedback(); onClick?.(e); }} aria-label={label || 'Action'}>
       <Icon name={icon} />
       {label && <span>{label}</span>}
     </button>

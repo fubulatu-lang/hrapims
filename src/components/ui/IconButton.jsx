@@ -1,5 +1,6 @@
 import { forwardRef } from 'react';
 import { Icon } from './Icon';
+import { useFeedback } from '../../hooks/useFeedback';
 
 /**
  * An icon-only button. `label` is required and becomes the accessible
@@ -16,12 +17,14 @@ import { Icon } from './Icon';
  * @example <IconButton icon="more_vert" label="More actions" variant="tonal" onClick={openMenu} />
  */
 export const IconButton = forwardRef(function IconButton(
-  { icon, label, variant = 'standard', className = '', ...rest },
+  { icon, label, variant = 'standard', className = '', onClick, ...rest },
   ref
 ) {
+  const feedback = useFeedback();
   const classes = ['icon-btn', variant === 'tonal' ? 'filled-tonal' : '', className].filter(Boolean).join(' ');
   return (
-    <button ref={ref} type="button" className={classes} aria-label={label} title={label} {...rest}>
+    <button ref={ref} type="button" className={classes} aria-label={label} title={label}
+      onClick={(e) => { feedback(); onClick?.(e); }} {...rest}>
       <Icon name={icon} />
     </button>
   );

@@ -1,18 +1,20 @@
 import { useState } from 'react';
-import { TopBar, Icon, Spinner, Alert, EmptyState } from '../components/ui';
+import { TopBar, Icon, Spinner, Alert, EmptyState, SortControl } from '../components/ui';
 import { PatientCard } from '../components/patients/PatientCard';
 import { useDebounce } from '../hooks/useDebounce';
 import { useApiQuery } from '../hooks/useApiQuery';
+import { useSort } from '../hooks/useSort';
 import { useNavigation } from '../context/NavigationContext';
 
 export function SearchPage() {
   const [query, setQuery] = useState('');
   const debounced = useDebounce(query, 400);
   const { navigate } = useNavigation();
+  const { sortBy, sortDir, setSort, queryParams } = useSort();
   const canSearch = debounced.trim().length >= 3;
   const { data, loading, error } = useApiQuery(
-    canSearch ? `/patients/search?query=${encodeURIComponent(debounced)}&limit=50` : null,
-    [debounced]
+    canSearch ? `/patients/search?query=${encodeURIComponent(debounced)}&limit=50&${queryParams}` : null,
+    [debounced, queryParams]
   );
 
   return (
@@ -41,9 +43,12 @@ export function SearchPage() {
           )}
           {canSearch && data && data.patients.length > 0 && (
             <>
-              <p style={{ fontSize: '.78rem', color: 'var(--md-on-surface-variant)', marginBottom: 10 }}>
-                Found {data.patients.length} patient(s)
-              </p>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10, flexWrap: 'wrap', gap: 8 }}>
+                <p style={{ fontSize: '.78rem', color: 'var(--md-on-surface-variant)' }}>
+                  Found {data.patients.length} patient(s)
+                </p>
+                <SortControl sortBy={sortBy} sortDir={sortDir} onChange={setSort} />
+              </div>
               {data.patients.map((p) => (
                 <PatientCard key={p.folder_number} patient={p} onClick={() => navigate('patientDetail', { folderNumber: p.folder_number })} />
               ))}

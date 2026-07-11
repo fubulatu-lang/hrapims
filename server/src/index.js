@@ -7,7 +7,7 @@ const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 
 const APP_NAME = 'HRAPIMS';
-const APP_VERSION = '2.0.0';
+const APP_VERSION = '2.1.0';
 
 // In production set JWT_SECRET yourself (Vercel env var) so sessions survive
 // deploys/restarts. Falling back to a random secret is safe but means every
@@ -114,7 +114,7 @@ async function initDB() {
 
     const settingsCheck = await client.query("SELECT id FROM system_settings WHERE id = 'main'");
     if (settingsCheck.rows.length === 0) {
-      await client.query("INSERT INTO system_settings (id) VALUES ('main')");
+      await client.query("INSERT INTO system_settings (id) VALUES ('main') ON CONFLICT (id) DO NOTHING");
     }
 
     // Bootstrap: guarantee there is always at least one way in. Runs only
@@ -183,10 +183,19 @@ function getBMICategory(bmi) {
 }
 
 // Atomic increment avoids a read-then-write race under concurrent creates.
+// Self-heals if the `system_settings` row is somehow missing instead of
+// crashing on `undefined.last_sequence_number` — a bare UPDATE returning
+// zero rows previously threw here with no useful error message.
 async function getNextFolderNumber() {
-  const result = await pool.query(
+  let result = await pool.query(
     "UPDATE system_settings SET last_sequence_number = last_sequence_number + 1 WHERE id = 'main' RETURNING *"
   );
+  if (result.rows.length === 0) {
+    await pool.query("INSERT INTO system_settings (id) VALUES ('main') ON CONFLICT (id) DO NOTHING");
+    result = await pool.query(
+      "UPDATE system_settings SET last_sequence_number = last_sequence_number + 1 WHERE id = 'main' RETURNING *"
+    );
+  }
   const s = result.rows[0];
   const now = new Date();
   const padded = String(s.last_sequence_number).padStart(s.sequence_digits, '0');
@@ -244,7 +253,7 @@ app.get('/api/staff/directory', async (req, res) => {
       [role]
     );
     res.json({ staff: result.rows });
-  } catch (error) { console.error(error); res.status(500).json({ error: 'Server error' }); }
+  } catch (error) { console.error(error); res.status(500).json({ error: error.message || 'Server error' }); }
 });
 
 app.post('/api/auth/login', async (req, res) => {
@@ -270,7 +279,7 @@ app.post('/api/auth/login', async (req, res) => {
       token,
       staff: { id: staff.id, firstName: staff.first_name, lastName: staff.last_name, role: staff.role, mustChangePin: staff.must_change_pin },
     });
-  } catch (error) { console.error(error); res.status(500).json({ error: 'Server error' }); }
+  } catch (error) { console.error(error); res.status(500).json({ error: error.message || 'Server error' }); }
 });
 
 // Every route below this line WOULD require a valid session once real
@@ -284,33 +293,47 @@ app.post('/api/auth/login', async (req, res) => {
 
 app.get('/api/auth/me', async (req, res) => {
   try {
+    if (!req.staff) return res.status(401).json({ error: 'Not signed in' });
     const result = await pool.query('SELECT id, first_name, last_name, role, must_change_pin FROM staff WHERE id = $1', [req.staff.id]);
     if (result.rows.length === 0) return res.status(404).json({ error: 'Not found' });
     const s = result.rows[0];
     res.json({ id: s.id, firstName: s.first_name, lastName: s.last_name, role: s.role, mustChangePin: s.must_change_pin });
-  } catch (error) { console.error(error); res.status(500).json({ error: 'Server error' }); }
+  } catch (error) { console.error(error); res.status(500).json({ error: error.message || 'Server error' }); }
 });
 
 app.post('/api/auth/change-pin', async (req, res) => {
   try {
+    if (!req.staff) return res.status(401).json({ error: 'Not signed in' });
     const { newPin } = req.body;
     if (!/^[0-9]{4,6}$/.test(newPin || '')) return res.status(400).json({ error: '4-6 digit numeric PIN required' });
     const pinHash = await bcrypt.hash(newPin, 10);
     await pool.query('UPDATE staff SET pin_hash = $1, must_change_pin = false WHERE id = $2', [pinHash, req.staff.id]);
     res.json({ message: 'PIN updated' });
-  } catch (error) { console.error(error); res.status(500).json({ error: 'Server error' }); }
+  } catch (error) { console.error(error); res.status(500).json({ error: error.message || 'Server error' }); }
 });
+
+const SORT_COLUMNS = {
+  name: 'last_name, first_name',
+  created: 'created_at',
+  age: 'age',
+  folder: 'folder_number',
+};
+function buildSortClause(req) {
+  const column = SORT_COLUMNS[req.query.sortBy] || SORT_COLUMNS.created;
+  const dir = req.query.sortDir === 'asc' ? 'ASC' : 'DESC';
+  return `ORDER BY ${column} ${dir}`;
+}
 
 app.get('/api/patients', async (req, res) => {
   try {
     const page = parseInt(req.query.page) || 1, limit = Math.min(100, parseInt(req.query.limit) || 20), offset = (page - 1) * limit;
     const showDeleted = req.query.showDeleted === 'true';
     const where = showDeleted ? 'is_hard_deleted = false' : 'is_hard_deleted = false AND is_deleted = false';
-    const result = await pool.query(`SELECT * FROM patients WHERE ${where} ORDER BY created_at DESC LIMIT $1 OFFSET $2`, [limit, offset]);
+    const result = await pool.query(`SELECT * FROM patients WHERE ${where} ${buildSortClause(req)} LIMIT $1 OFFSET $2`, [limit, offset]);
     const count = await pool.query(`SELECT COUNT(*) FROM patients WHERE ${where}`);
     const total = parseInt(count.rows[0].count);
     res.json({ patients: result.rows, pagination: { page, limit, total, pages: Math.ceil(total / limit) } });
-  } catch (error) { console.error(error); res.status(500).json({ error: 'Server error' }); }
+  } catch (error) { console.error(error); res.status(500).json({ error: error.message || 'Server error' }); }
 });
 
 app.get('/api/patients/search', async (req, res) => {
@@ -324,11 +347,11 @@ app.get('/api/patients/search', async (req, res) => {
       national_id_number ILIKE $1 OR insurance_number ILIKE $1 OR location ILIKE $1 OR
       allergies ILIKE $1 OR chronic_conditions ILIKE $1
     )`;
-    const result = await pool.query(sql + ' ORDER BY created_at DESC LIMIT $2 OFFSET $3', [q, limit, offset]);
+    const result = await pool.query(sql + ` ${buildSortClause(req)} LIMIT $2 OFFSET $3`, [q, limit, offset]);
     const count = await pool.query(sql.replace('SELECT *', 'SELECT COUNT(*)'), [q]);
     const total = parseInt(count.rows[0].count);
     res.json({ patients: result.rows, pagination: { page, limit, total, pages: Math.ceil(total / limit) } });
-  } catch (error) { console.error(error); res.status(500).json({ error: 'Server error' }); }
+  } catch (error) { console.error(error); res.status(500).json({ error: error.message || 'Server error' }); }
 });
 
 app.get('/api/patients/:folderNumber', async (req, res) => {
@@ -336,7 +359,7 @@ app.get('/api/patients/:folderNumber', async (req, res) => {
     const result = await pool.query('SELECT * FROM patients WHERE folder_number = $1', [req.params.folderNumber]);
     if (result.rows.length === 0) return res.status(404).json({ error: 'Not found' });
     res.json(result.rows[0]);
-  } catch (error) { console.error(error); res.status(500).json({ error: 'Server error' }); }
+  } catch (error) { console.error(error); res.status(500).json({ error: error.message || 'Server error' }); }
 });
 
 app.post('/api/patients/check-unique', async (req, res) => {
@@ -358,7 +381,7 @@ app.post('/api/patients/check-unique', async (req, res) => {
       result.insurance = check.rows.length > 0 ? { exists: true, patient: check.rows[0] } : { exists: false };
     }
     res.json(result);
-  } catch (error) { console.error(error); res.status(500).json({ error: 'Server error' }); }
+  } catch (error) { console.error(error); res.status(500).json({ error: error.message || 'Server error' }); }
 });
 
 app.post('/api/patients', async (req, res) => {
@@ -367,6 +390,12 @@ app.post('/api/patients', async (req, res) => {
     const d = req.body;
     if (!d.firstName || !d.lastName || !d.gender || !d.location) {
       return res.status(400).json({ error: 'First name, last name, gender, and location are required' });
+    }
+    if (d.insuranceNumber && !/^\d{1,8}$/.test(d.insuranceNumber)) {
+      return res.status(400).json({ error: 'Insurance number must be up to 8 digits' });
+    }
+    if (d.nationalIdNumber && !/^GHA-\d{9}-\d$/.test(d.nationalIdNumber)) {
+      return res.status(400).json({ error: 'National ID must be in the format GHA-XXXXXXXXX-X' });
     }
     if (d.nationalIdNumber) {
       const check = await client.query('SELECT * FROM patients WHERE national_id_number = $1 AND is_hard_deleted = false', [d.nationalIdNumber]);
@@ -404,7 +433,7 @@ app.post('/api/patients', async (req, res) => {
     await logActivity(req, 'CREATE', 'PATIENT', folderNumber, folderNumber, { initialData: d });
     const result = await client.query('SELECT * FROM patients WHERE folder_number = $1', [folderNumber]);
     res.status(201).json(result.rows[0]);
-  } catch (error) { console.error('Create error:', error.message); res.status(500).json({ error: 'Server error' }); }
+  } catch (error) { console.error('Create error:', error.message); res.status(500).json({ error: error.message || 'Server error' }); }
   finally { client.release(); }
 });
 
@@ -416,6 +445,12 @@ app.put('/api/patients/:folderNumber', async (req, res) => {
     const e = existing.rows[0];
     if (d.version && d.version !== e.version) {
       return res.status(409).json({ error: 'Record was updated by someone else. Please refresh and try again.' });
+    }
+    if (d.insuranceNumber && !/^\d{1,8}$/.test(d.insuranceNumber)) {
+      return res.status(400).json({ error: 'Insurance number must be up to 8 digits' });
+    }
+    if (d.nationalIdNumber && !/^GHA-\d{9}-\d$/.test(d.nationalIdNumber)) {
+      return res.status(400).json({ error: 'National ID must be in the format GHA-XXXXXXXXX-X' });
     }
     let dob = e.date_of_birth, age = e.age, estimated = e.is_age_estimated;
     if (d.dateOfBirth) {
@@ -453,7 +488,7 @@ app.put('/api/patients/:folderNumber', async (req, res) => {
     await logActivity(req, 'UPDATE', 'PATIENT', fn, fn, { changes });
     const result = await pool.query('SELECT * FROM patients WHERE folder_number = $1', [fn]);
     res.json(result.rows[0]);
-  } catch (error) { console.error('Update error:', error.message); res.status(500).json({ error: 'Server error' }); }
+  } catch (error) { console.error('Update error:', error.message); res.status(500).json({ error: error.message || 'Server error' }); }
 });
 
 app.delete('/api/patients/:folderNumber', async (req, res) => {
@@ -461,7 +496,7 @@ app.delete('/api/patients/:folderNumber', async (req, res) => {
     await pool.query('UPDATE patients SET is_deleted = true, deleted_at = NOW() WHERE folder_number = $1', [req.params.folderNumber]);
     await logActivity(req, 'SOFT_DELETE', 'PATIENT', req.params.folderNumber, req.params.folderNumber);
     res.json({ message: 'Deleted' });
-  } catch (error) { console.error(error); res.status(500).json({ error: 'Server error' }); }
+  } catch (error) { console.error(error); res.status(500).json({ error: error.message || 'Server error' }); }
 });
 
 app.post('/api/patients/:folderNumber/restore', async (req, res) => {
@@ -469,7 +504,7 @@ app.post('/api/patients/:folderNumber/restore', async (req, res) => {
     await pool.query('UPDATE patients SET is_deleted = false, deleted_at = NULL WHERE folder_number = $1', [req.params.folderNumber]);
     await logActivity(req, 'RESTORE', 'PATIENT', req.params.folderNumber, req.params.folderNumber);
     res.json({ message: 'Restored' });
-  } catch (error) { console.error(error); res.status(500).json({ error: 'Server error' }); }
+  } catch (error) { console.error(error); res.status(500).json({ error: error.message || 'Server error' }); }
 });
 
 app.delete('/api/patients/:folderNumber/permanent', async (req, res) => {
@@ -478,7 +513,7 @@ app.delete('/api/patients/:folderNumber/permanent', async (req, res) => {
     await pool.query('UPDATE patients SET is_hard_deleted = true, hard_deleted_at = NOW(), is_deleted = false, deleted_at = NULL WHERE folder_number = $1', [req.params.folderNumber]);
     await logActivity(req, 'HARD_DELETE', 'PATIENT', req.params.folderNumber, req.params.folderNumber);
     res.json({ message: 'Permanently deleted' });
-  } catch (error) { console.error(error); res.status(500).json({ error: 'Server error' }); }
+  } catch (error) { console.error(error); res.status(500).json({ error: error.message || 'Server error' }); }
 });
 
 app.post('/api/patients/merge', async (req, res) => {
@@ -503,7 +538,7 @@ app.post('/api/patients/merge', async (req, res) => {
     await pool.query('UPDATE patients SET is_deleted = true, deleted_at = NOW() WHERE folder_number = $1', [sourceFolderNumber]);
     await logActivity(req, 'MERGE', 'PATIENT', targetFolderNumber, targetFolderNumber, { mergedFrom: sourceFolderNumber, conflicts });
     res.json({ message: 'Merged', conflicts: Object.keys(conflicts).length > 0 ? conflicts : null });
-  } catch (error) { console.error('Merge error:', error.message); res.status(500).json({ error: 'Server error' }); }
+  } catch (error) { console.error('Merge error:', error.message); res.status(500).json({ error: error.message || 'Server error' }); }
 });
 
 app.get('/api/activity', async (req, res) => {
@@ -520,14 +555,14 @@ app.get('/api/activity', async (req, res) => {
     const count = await pool.query(`SELECT COUNT(*) FROM activity_logs WHERE ${where}`, countParams);
     const total = parseInt(count.rows[0].count);
     res.json({ logs: result.rows, pagination: { page, limit, total, pages: Math.ceil(total / limit) } });
-  } catch (error) { console.error(error); res.status(500).json({ error: 'Server error' }); }
+  } catch (error) { console.error(error); res.status(500).json({ error: error.message || 'Server error' }); }
 });
 
 app.get('/api/activity/filters', async (req, res) => {
   try {
     const actions = await pool.query('SELECT DISTINCT action FROM activity_logs ORDER BY action');
     res.json({ actions: actions.rows.map((a) => a.action) });
-  } catch (error) { console.error(error); res.status(500).json({ error: 'Server error' }); }
+  } catch (error) { console.error(error); res.status(500).json({ error: error.message || 'Server error' }); }
 });
 
 // ---- Staff management (admin only) ----
@@ -538,7 +573,7 @@ app.get('/api/staff', async (req, res) => {
       'SELECT id, first_name, last_name, role, is_active, must_change_pin, failed_attempts, locked_until, last_login_at, created_at FROM staff ORDER BY created_at DESC'
     );
     res.json({ staff: result.rows });
-  } catch (error) { console.error(error); res.status(500).json({ error: 'Server error' }); }
+  } catch (error) { console.error(error); res.status(500).json({ error: error.message || 'Server error' }); }
 });
 
 app.post('/api/staff', async (req, res) => {
@@ -554,7 +589,7 @@ app.post('/api/staff', async (req, res) => {
     );
     await logActivity(req, 'CREATE', 'STAFF', result.rows[0].id, null, { firstName, lastName, role: finalRole });
     res.status(201).json({ ...result.rows[0], temporaryPin: pin });
-  } catch (error) { console.error(error); res.status(500).json({ error: 'Server error' }); }
+  } catch (error) { console.error(error); res.status(500).json({ error: error.message || 'Server error' }); }
 });
 
 app.put('/api/staff/:id', async (req, res) => {
@@ -576,7 +611,7 @@ app.put('/api/staff/:id', async (req, res) => {
     );
     await logActivity(req, 'UPDATE', 'STAFF', req.params.id, null, { firstName, lastName, role, isActive });
     res.json({ message: 'Updated' });
-  } catch (error) { console.error(error); res.status(500).json({ error: 'Server error' }); }
+  } catch (error) { console.error(error); res.status(500).json({ error: error.message || 'Server error' }); }
 });
 
 app.post('/api/staff/:id/reset-pin', async (req, res) => {
@@ -586,12 +621,14 @@ app.post('/api/staff/:id/reset-pin', async (req, res) => {
     await pool.query('UPDATE staff SET pin_hash = $1, must_change_pin = true, failed_attempts = 0, locked_until = NULL WHERE id = $2', [pinHash, req.params.id]);
     await logActivity(req, 'PIN_RESET', 'STAFF', req.params.id, null);
     res.json({ temporaryPin: pin });
-  } catch (error) { console.error(error); res.status(500).json({ error: 'Server error' }); }
+  } catch (error) { console.error(error); res.status(500).json({ error: error.message || 'Server error' }); }
 });
 
 app.delete('/api/staff/:id', async (req, res) => {
   try {
-    if (req.params.id === req.staff.id) return res.status(400).json({ error: 'You cannot remove your own account' });
+    // req.staff only exists once real login (the `authenticate` middleware
+    // above) is switched back on — guard instead of assuming it's set.
+    if (req.staff && req.params.id === req.staff.id) return res.status(400).json({ error: 'You cannot remove your own account' });
     const existing = await pool.query('SELECT * FROM staff WHERE id = $1', [req.params.id]);
     if (existing.rows.length === 0) return res.status(404).json({ error: 'Not found' });
     if (existing.rows[0].role === 'ADMIN') {
@@ -601,14 +638,14 @@ app.delete('/api/staff/:id', async (req, res) => {
     await pool.query('DELETE FROM staff WHERE id = $1', [req.params.id]);
     await logActivity(req, 'DELETE', 'STAFF', req.params.id, null);
     res.json({ message: 'Removed' });
-  } catch (error) { console.error(error); res.status(500).json({ error: 'Server error' }); }
+  } catch (error) { console.error(error); res.status(500).json({ error: error.message || 'Server error' }); }
 });
 
 app.get('/api/settings/folder-format', async (req, res) => {
   try {
     const result = await pool.query("SELECT * FROM system_settings WHERE id = 'main'");
     res.json(result.rows[0]);
-  } catch (error) { console.error(error); res.status(500).json({ error: 'Server error' }); }
+  } catch (error) { console.error(error); res.status(500).json({ error: error.message || 'Server error' }); }
 });
 
 app.put('/api/settings/folder-format', async (req, res) => {
@@ -620,14 +657,14 @@ app.put('/api/settings/folder-format', async (req, res) => {
     );
     const result = await pool.query("SELECT * FROM system_settings WHERE id = 'main'");
     res.json(result.rows[0]);
-  } catch (error) { console.error(error); res.status(500).json({ error: 'Server error' }); }
+  } catch (error) { console.error(error); res.status(500).json({ error: error.message || 'Server error' }); }
 });
 
 app.post('/api/export/backup', async (req, res) => {
   try {
     const patients = await pool.query('SELECT * FROM patients WHERE is_hard_deleted = false');
     res.json({ message: 'Backup ready', recordCount: patients.rows.length, data: patients.rows });
-  } catch (error) { console.error(error); res.status(500).json({ error: 'Server error' }); }
+  } catch (error) { console.error(error); res.status(500).json({ error: error.message || 'Server error' }); }
 });
 
 function toCsvRow(values) {
@@ -644,7 +681,7 @@ app.get('/api/export/patients', async (req, res) => {
     res.setHeader('Content-Type', 'text/csv');
     res.setHeader('Content-Disposition', 'attachment; filename=hrapims-patients.csv');
     res.send(csv);
-  } catch (error) { console.error(error); res.status(500).json({ error: 'Server error' }); }
+  } catch (error) { console.error(error); res.status(500).json({ error: error.message || 'Server error' }); }
 });
 
 app.get('/api/export/activity', async (req, res) => {
@@ -658,7 +695,7 @@ app.get('/api/export/activity', async (req, res) => {
     res.setHeader('Content-Type', 'text/csv');
     res.setHeader('Content-Disposition', 'attachment; filename=hrapims-activity.csv');
     res.send(csv);
-  } catch (error) { console.error(error); res.status(500).json({ error: 'Server error' }); }
+  } catch (error) { console.error(error); res.status(500).json({ error: error.message || 'Server error' }); }
 });
 
 // ============ START / EXPORT ============

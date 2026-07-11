@@ -1,18 +1,24 @@
 import { useState } from 'react';
-import { TopBar, IconButton, Spinner, Alert, EmptyState, Button } from '../components/ui';
+import { TopBar, IconButton, Spinner, Alert, EmptyState, Button, SortControl } from '../components/ui';
 import { PatientCard } from '../components/patients/PatientCard';
 import { useApiQuery } from '../hooks/useApiQuery';
+import { useSort } from '../hooks/useSort';
 import { useNavigation } from '../context/NavigationContext';
 
 export function PatientListPage() {
   const [page, setPage] = useState(1);
   const { navigate } = useNavigation();
-  const { data, loading, error } = useApiQuery(`/patients?page=${page}&limit=20&showDeleted=true`, [page]);
+  const { sortBy, sortDir, setSort, queryParams } = useSort();
+  const { data, loading, error } = useApiQuery(`/patients?page=${page}&limit=20&showDeleted=true&${queryParams}`, [page, queryParams]);
 
   return (
     <>
       <TopBar title="Patients" subtitle={data ? `${data.pagination.total} records` : undefined} />
       <div className="main-content">
+        <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 12 }}>
+          <SortControl sortBy={sortBy} sortDir={sortDir} onChange={(by, dir) => { setSort(by, dir); setPage(1); }} />
+        </div>
+
         {loading && <Spinner label="Loading patients" />}
         {error && <Alert variant="error">{error}</Alert>}
 
