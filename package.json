@@ -1,8 +1,7 @@
 {
   "name": "hrapims",
-  "version": "2.1.1",
+  "version": "2.1.2",
   "description": "Hospital Records And Patient Information Management System",
-  "type": "module",
   "scripts": {
     "dev:client": "vite",
     "dev:server": "node server/src/index.js",

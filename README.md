@@ -1,8 +1,53 @@
-# HRAPIMS v2.1.1
+# HRAPIMS v2.1.2
 
 Hospital Records And Patient Information Management System.
 
-## v2.1.1 — the actual root cause of "new patient" / "add staff" failing
+## v2.1.2 — the actual, confirmed root cause (this one was mine)
+
+Thank you for sending the Vercel logs — that made this a five-minute fix
+instead of another guess. The real error, straight from the logs:
+
+```
+ReferenceError: module is not defined in ES module scope
+This file is being treated as an ES module because it has a '.js' file
+extension and '/var/task/package.json' contains "type": "module".
+    at file:///var/task/api/index.js:3:1
+Node.js process exited with exit status: 1.
+```
+
+`package.json` had `"type": "module"` set (added during the React
+rewrite, out of habit more than necessity). That setting tells Node to
+treat **every** `.js` file in the project as an ES module — including
+`api/index.js` and `server/src/index.js`, which are written in CommonJS
+(`require(...)` / `module.exports`). Node refused to load them at all,
+the serverless function crashed on startup, and **every single API
+route** 500'd — which matches your screenshot exactly: patients, staff,
+activity, settings, check-unique, all of it, all at once. This explains
+everything since the `public/index.html` fix — that fix was correct and
+necessary, it just uncovered this second, unrelated bug once the real
+frontend started actually calling the API.
+
+**The fix:** removed `"type": "module"` from `package.json`. It turns
+out nothing in this project actually needed it — Vite transpiles
+`vite.config.js` internally regardless of that setting, and the built
+frontend files are loaded via `<script type="module">` in the HTML,
+which is governed by the browser, not Node's `package.json`. So this was
+a pure footgun with no upside; removing it costs nothing and fixes the
+crash. The backend stays CommonJS (`require`/`module.exports`), same as
+it's been since v1.0.0.
+
+No files need deleting this time — just replace `package.json`,
+`api/index.js`, and `server/src/index.js` with the versions in this zip
+(or sync the whole thing) and redeploy.
+
+### Also: ID uniqueness lookups now check as-you-type
+Continued from v2.1.1 — see that section below for details.
+
+---
+
+## Everything below is unchanged from v2.1.1
+
+
 
 Found it. It wasn't the server code at all — **your repo had a leftover
 `public/index.html` file from the very first single-HTML-file version of
