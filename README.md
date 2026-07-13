@@ -1,8 +1,43 @@
-# HRAPIMS v2.1.0
+# HRAPIMS v2.1.1
 
 Hospital Records And Patient Information Management System.
 
-## v2.1.0 — bug fixes + new features
+## v2.1.1 — the actual root cause of "new patient" / "add staff" failing
+
+Found it. It wasn't the server code at all — **your repo had a leftover
+`public/index.html` file from the very first single-HTML-file version of
+this app** (before the React rewrite). Vite copies everything in
+`public/` into the build output as a final step, and since that file is
+also named `index.html`, it was **silently overwriting the real,
+React-built `index.html`** every single deploy. You've been running the
+old pre-React app this whole time — none of the fixes from v1.3.0 through
+v2.1.0 ever actually reached your browser, because the entry file itself
+was stale. That's why every fix looked like it "didn't work."
+
+**Action required on your end:** deleting a file from a zip re-upload
+doesn't delete it from GitHub — your mobile sync tool appears to only
+add/overwrite files. You need to explicitly delete two files from the
+GitHub repo itself:
+- `public/index.html` (the stale file causing this whole issue)
+- `src/hooks/useDarkMode.js` (superseded by `useTheme.js` back in v2.1.0,
+  never actually used anymore — harmless but dead; delete it for hygiene)
+
+Easiest way on a phone: open each file on github.com, tap the trash-can /
+"..." → Delete file, commit. Then re-sync this corrected project on top
+(or just push these files) and redeploy.
+
+### Identification lookups now check as you type, not just on blur
+Both **National ID** and **Insurance Number** trigger the duplicate-check
+against the database the instant the last digit is typed (10th for
+National ID, 8th for Insurance) — you no longer have to tap out of the
+field to see a duplicate warning. Leaving the field still re-checks as a
+safety net (e.g. after pasting a number in).
+
+---
+
+## Everything below is unchanged from v2.1.0
+
+
 
 ### Fixed: the three "Request failed 500" errors
 

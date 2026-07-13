@@ -1,6 +1,6 @@
 {
   "name": "hrapims",
-  "version": "2.1.0",
+  "version": "2.1.1",
   "description": "Hospital Records And Patient Information Management System",
   "type": "module",
   "scripts": {

@@ -7,7 +7,7 @@ import { HAPTIC_LEVELS, getHapticLevel, setHapticLevel, triggerHaptic } from '..
 import { SOUND_LEVELS, getSoundLevel, setSoundLevel, playTouchSound } from '../lib/touchSound';
 import { api } from '../lib/api';
 
-const APP_VERSION = '2.1.0';
+const APP_VERSION = '2.1.1';
 
 export function SettingsPage() {
   const { role, isAdmin, logout } = useSession();

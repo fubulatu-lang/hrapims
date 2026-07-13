@@ -7,7 +7,7 @@ const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 
 const APP_NAME = 'HRAPIMS';
-const APP_VERSION = '2.1.0';
+const APP_VERSION = '2.1.1';
 
 // In production set JWT_SECRET yourself (Vercel env var) so sessions survive
 // deploys/restarts. Falling back to a random secret is safe but means every

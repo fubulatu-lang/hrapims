@@ -14,11 +14,14 @@ export function formatNationalId(digits) {
 /**
  * National ID field, prefilled with the "GHA-" prefix. As the person types
  * digits the second dash auto-appears after the 9th digit; a checkmark
- * appears once all 10 digits are entered. Leaving the field checks the
- * database for a duplicate. If nothing was ever typed, the prefilled
- * "GHA-" is discarded on save rather than persisted as a value — the
- * parent form is responsible for that (it only receives digits from here,
- * see PatientFormPage: empty digits become `null` on submit).
+ * appears once all 10 digits are entered. The database is checked for a
+ * duplicate the instant the 10th digit is typed (not just on blur, so a
+ * duplicate warning shows up immediately instead of waiting for the person
+ * to tab away). Leaving the field re-checks as a safety net (e.g. after a
+ * paste). If nothing was ever typed, the prefilled "GHA-" is discarded on
+ * save rather than persisted as a value — the parent form is responsible
+ * for that (it only receives digits from here, see PatientFormPage: empty
+ * digits become `null` on submit).
  *
  * @param {object} props
  * @param {string} props.value - digits only (0-10 chars), NOT the formatted display string
@@ -35,26 +38,31 @@ export function NationalIdField({ value, onChange, excludeFolderNumber }) {
   const isValid = digits.length === 10;
   const error = touched && digits.length > 0 && digits.length < 10 ? 'National ID must be 10 digits (GHA-XXXXXXXXX-X)' : undefined;
 
-  function handleChange(display) {
-    // Only digits after "GHA-" are meaningful — re-derive from whatever's
-    // typed so the prefix can't be edited/deleted out from under the mask.
-    const nextDigits = display.replace(/\D/g, '').slice(0, 10);
-    onChange(nextDigits);
-    setDuplicate(null);
-  }
-
-  async function handleBlur() {
-    setTouched(true);
-    if (digits.length !== 10) { setDuplicate(null); return; }
+  async function checkUnique(fullDigits) {
     setChecking(true);
     try {
-      const res = await api.post('/patients/check-unique', { nationalIdNumber: formatNationalId(digits), excludeFolderNumber });
+      const res = await api.post('/patients/check-unique', { nationalIdNumber: formatNationalId(fullDigits), excludeFolderNumber });
       setDuplicate(res.nationalId?.exists ? res.nationalId.patient : null);
     } catch {
       /* non-blocking, see InsuranceField for rationale */
     } finally {
       setChecking(false);
     }
+  }
+
+  function handleChange(display) {
+    // Only digits after "GHA-" are meaningful — re-derive from whatever's
+    // typed so the prefix can't be edited/deleted out from under the mask.
+    const nextDigits = display.replace(/\D/g, '').slice(0, 10);
+    onChange(nextDigits);
+    setDuplicate(null);
+    if (nextDigits.length === 10) checkUnique(nextDigits);
+  }
+
+  function handleBlur() {
+    setTouched(true);
+    if (digits.length !== 10) { setDuplicate(null); return; }
+    checkUnique(digits);
   }
 
   return (
