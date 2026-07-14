@@ -6,7 +6,7 @@ import { api } from '../lib/api';
 import { titleCase, formatDate } from '../lib/format';
 
 export function PatientDetailPage() {
-  const { params, navigate, back } = useNavigation();
+  const { params, navigate, goTo, back } = useNavigation();
   const { isAdmin } = useSession();
   const menu = useMenu();
   const { data: p, loading, error, refetch } = useApiQuery(`/patients/${params.folderNumber}`);
@@ -21,7 +21,7 @@ export function PatientDetailPage() {
   async function handleSoftDelete() {
     if (!confirm('Soft delete this patient? It can be restored later.')) return;
     await api.delete(`/patients/${p.folder_number}`);
-    navigate('patientList');
+    goTo('patientList');
   }
   async function handleRestore() {
     await api.post(`/patients/${p.folder_number}/restore`, {});
@@ -32,7 +32,7 @@ export function PatientDetailPage() {
     const typed = prompt('Type DELETE to confirm permanent deletion:');
     if (typed !== 'DELETE') return;
     await api.delete(`/patients/${p.folder_number}/permanent`, { confirmation: 'DELETE' });
-    navigate('patientList');
+    goTo('patientList');
   }
 
   const menuItems = !p.is_deleted

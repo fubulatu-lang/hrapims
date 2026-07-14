@@ -7,11 +7,11 @@ import { HAPTIC_LEVELS, getHapticLevel, setHapticLevel, triggerHaptic } from '..
 import { SOUND_LEVELS, getSoundLevel, setSoundLevel, playTouchSound } from '../lib/touchSound';
 import { api } from '../lib/api';
 
-const APP_VERSION = '2.1.2';
+const APP_VERSION = '2.2.0';
 
 export function SettingsPage() {
   const { role, isAdmin, logout } = useSession();
-  const { goTo } = useNavigation();
+  const { navigate } = useNavigation();
 
   function handleSignOut() {
     if (confirm('Sign out of HRAPIMS?')) logout();
@@ -39,7 +39,7 @@ export function SettingsPage() {
               <p style={{ fontSize: '.8rem', color: 'var(--md-on-surface-variant)', marginBottom: 12 }}>
                 Add staff and administrator accounts, reset PINs, or deactivate access.
               </p>
-              <Button variant="tonal" size="sm" icon="manage_accounts" onClick={() => goTo('staffManage')}>
+              <Button variant="tonal" size="sm" icon="manage_accounts" onClick={() => navigate('staffManage')}>
                 Open Staff Management
               </Button>
             </Card>

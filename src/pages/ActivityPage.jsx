@@ -1,12 +1,13 @@
 import { Fragment, useState } from 'react';
 import { TopBar, IconButton, Card, Chip, Spinner, Alert, EmptyState, Button } from '../components/ui';
 import { useApiQuery } from '../hooks/useApiQuery';
+import { usePageState } from '../hooks/usePageState';
 import { api } from '../lib/api';
 import { formatDateTime } from '../lib/format';
 
 export function ActivityPage() {
-  const [page, setPage] = useState(1);
-  const [filters, setFilters] = useState({ patient: '', start: '', end: '' });
+  const [page, setPage] = usePageState('activity.page', 1);
+  const [filters, setFilters] = usePageState('activity.filters', { patient: '', start: '', end: '' });
   const [expandedId, setExpandedId] = useState(null);
 
   const params = new URLSearchParams({ page: String(page), limit: '20' });

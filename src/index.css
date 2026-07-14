@@ -1,5 +1,10 @@
 /* ============ MATERIAL 3 DESIGN TOKENS ============ */
-:root {
+/* Theming is attribute-driven: [data-theme="..."] on <body> swaps the
+   whole token set in one place. Adding a 6th theme later means adding
+   one more block here and one entry in src/hooks/useTheme.js — nothing
+   else in the app references color values directly, so no component
+   ever needs to change. */
+:root, [data-theme="light"] {
   --md-primary: #1a6b8f; --md-on-primary: #ffffff; --md-primary-container: #cbe6f6; --md-on-primary-container: #001f2b;
   --md-secondary: #4d6470; --md-on-secondary: #ffffff; --md-secondary-container: #d0e6f2; --md-on-secondary-container: #081e27;
   --md-tertiary: #5d5a7d; --md-on-tertiary: #ffffff; --md-tertiary-container: #e3dfff; --md-on-tertiary-container: #191635;
@@ -11,14 +16,9 @@
   --md-surface-container-lowest: #ffffff; --md-surface-container-low: #f1f4f6;
   --md-surface-container: #ebeef1; --md-surface-container-high: #e5e9eb; --md-surface-container-highest: #dfe3e5;
   --md-outline: #70787c; --md-outline-variant: #c0c8cc;
-  --shape-xs: 4px; --shape-sm: 8px; --shape-md: 12px; --shape-lg: 16px; --shape-xl: 28px; --shape-full: 999px;
-  --e1: 0 1px 2px rgba(0,0,0,.16), 0 1px 3px 1px rgba(0,0,0,.08);
-  --e2: 0 1px 2px rgba(0,0,0,.18), 0 2px 6px 2px rgba(0,0,0,.10);
-  --e3: 0 1px 3px rgba(0,0,0,.2), 0 4px 8px 3px rgba(0,0,0,.12);
-  --font: 'Roboto', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
   --focus-ring: 0 0 0 3px rgba(26,107,143,.35);
 }
-body.dark {
+[data-theme="dark"] {
   --md-primary: #8fceee; --md-on-primary: #003547; --md-primary-container: #004d66; --md-on-primary-container: #cbe6f6;
   --md-secondary: #b4cbd8; --md-on-secondary: #1f333c; --md-secondary-container: #364a53; --md-on-secondary-container: #d0e6f2;
   --md-tertiary: #c6c1ea; --md-on-tertiary: #2f2c4d; --md-tertiary-container: #454264; --md-on-tertiary-container: #e3dfff;
@@ -32,14 +32,59 @@ body.dark {
   --md-outline: #8a9296; --md-outline-variant: #40484c;
   --focus-ring: 0 0 0 3px rgba(143,206,238,.35);
 }
-/* Midnight (AMOLED) layers on top of .dark: every surface tone drops to
-   true black. Content colors (primary, error, etc.) stay the same as
-   dark mode — only backgrounds change, so contrast ratios don't regress. */
-body.dark.midnight {
-  --md-background: #000000; --md-surface: #000000;
+/* Midnight (AMOLED): same content colors as dark, backgrounds drop to
+   true black so contrast ratios don't regress — only surfaces change. */
+[data-theme="midnight"] {
+  --md-primary: #8fceee; --md-on-primary: #003547; --md-primary-container: #004d66; --md-on-primary-container: #cbe6f6;
+  --md-secondary: #b4cbd8; --md-on-secondary: #1f333c; --md-secondary-container: #364a53; --md-on-secondary-container: #d0e6f2;
+  --md-tertiary: #c6c1ea; --md-on-tertiary: #2f2c4d; --md-tertiary-container: #454264; --md-on-tertiary-container: #e3dfff;
+  --md-error: #ffb4ab; --md-on-error: #690005; --md-error-container: #93000a; --md-on-error-container: #ffdad6;
+  --md-success: #96d59a; --md-success-container: #1a4a1e; --md-on-success-container: #d7f0d8;
+  --md-warning: #f4c04a; --md-warning-container: #5a4300; --md-on-warning-container: #ffe8a6;
+  --md-background: #000000; --md-on-background: #e0e3e5;
+  --md-surface: #000000; --md-on-surface: #e0e3e5; --md-on-surface-variant: #c0c8cc;
   --md-surface-container-lowest: #000000; --md-surface-container-low: #000000;
   --md-surface-container: #050505; --md-surface-container-high: #0d0d0d; --md-surface-container-highest: #161616;
-  --md-outline-variant: #262626;
+  --md-outline: #8a9296; --md-outline-variant: #262626;
+  --focus-ring: 0 0 0 3px rgba(143,206,238,.35);
+}
+/* Slate: neutral graphite-blue, light background — a cooler, more
+   corporate alternative to the default clinical teal. */
+[data-theme="slate"] {
+  --md-primary: #3a5169; --md-on-primary: #ffffff; --md-primary-container: #d4e0ee; --md-on-primary-container: #0d1b2a;
+  --md-secondary: #55606b; --md-on-secondary: #ffffff; --md-secondary-container: #d9e2ea; --md-on-secondary-container: #131c24;
+  --md-tertiary: #6b5a54; --md-on-tertiary: #ffffff; --md-tertiary-container: #f1ddd4; --md-on-tertiary-container: #241a15;
+  --md-error: #ba1a1a; --md-on-error: #ffffff; --md-error-container: #ffdad6; --md-on-error-container: #410002;
+  --md-success: #2e7d32; --md-success-container: #d7f0d8; --md-on-success-container: #0a2e0c;
+  --md-warning: #7a5900; --md-warning-container: #ffe8a6; --md-on-warning-container: #271900;
+  --md-background: #f5f6f8; --md-on-background: #1a1c1e;
+  --md-surface: #f5f6f8; --md-on-surface: #1a1c1e; --md-on-surface-variant: #44474a;
+  --md-surface-container-lowest: #ffffff; --md-surface-container-low: #eff1f3;
+  --md-surface-container: #e9ebed; --md-surface-container-high: #e3e5e7; --md-surface-container-highest: #dde0e2;
+  --md-outline: #74777a; --md-outline-variant: #c4c7ca;
+  --focus-ring: 0 0 0 3px rgba(58,81,105,.35);
+}
+/* Emerald: calming clinical green, light background. */
+[data-theme="emerald"] {
+  --md-primary: #1c6e4f; --md-on-primary: #ffffff; --md-primary-container: #c3f0d7; --md-on-primary-container: #00210f;
+  --md-secondary: #4d6357; --md-on-secondary: #ffffff; --md-secondary-container: #cfe9d9; --md-on-secondary-container: #0a1f15;
+  --md-tertiary: #3d6373; --md-on-tertiary: #ffffff; --md-tertiary-container: #c1e8fb; --md-on-tertiary-container: #001f28;
+  --md-error: #ba1a1a; --md-on-error: #ffffff; --md-error-container: #ffdad6; --md-on-error-container: #410002;
+  --md-success: #2e7d32; --md-success-container: #d7f0d8; --md-on-success-container: #0a2e0c;
+  --md-warning: #7a5900; --md-warning-container: #ffe8a6; --md-on-warning-container: #271900;
+  --md-background: #f4faf6; --md-on-background: #171d1a;
+  --md-surface: #f4faf6; --md-on-surface: #171d1a; --md-on-surface-variant: #414942;
+  --md-surface-container-lowest: #ffffff; --md-surface-container-low: #eef4f0;
+  --md-surface-container: #e8f0ea; --md-surface-container-high: #e2eae4; --md-surface-container-highest: #dce5df;
+  --md-outline: #6f7975; --md-outline-variant: #bfc9c3;
+  --focus-ring: 0 0 0 3px rgba(28,110,79,.35);
+}
+:root {
+  --shape-xs: 4px; --shape-sm: 8px; --shape-md: 12px; --shape-lg: 16px; --shape-xl: 28px; --shape-full: 999px;
+  --e1: 0 1px 2px rgba(0,0,0,.16), 0 1px 3px 1px rgba(0,0,0,.08);
+  --e2: 0 1px 2px rgba(0,0,0,.18), 0 2px 6px 2px rgba(0,0,0,.10);
+  --e3: 0 1px 3px rgba(0,0,0,.2), 0 4px 8px 3px rgba(0,0,0,.12);
+  --font: 'Roboto', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
 }
 *{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent}
 html,body,#root{height:100%}
@@ -63,7 +108,7 @@ a{color:var(--md-primary)}
 .topbar-sub{font-size:.72rem;color:var(--md-on-surface-variant);font-weight:400;display:block;padding-left:8px;margin-top:-2px}
 .icon-btn{display:flex;align-items:center;justify-content:center;width:44px;height:44px;border-radius:var(--shape-full);border:none;background:transparent;color:var(--md-on-surface-variant);cursor:pointer;transition:background .15s,transform .1s ease;flex-shrink:0}
 .icon-btn:hover{background:rgba(0,0,0,.06)}
-body.dark .icon-btn:hover{background:rgba(255,255,255,.08)}
+[data-theme="dark"] .icon-btn:hover,[data-theme="midnight"] .icon-btn:hover{background:rgba(255,255,255,.08)}
 .icon-btn:active{transform:scale(.92)}
 .icon-btn.filled-tonal{background:var(--md-secondary-container);color:var(--md-on-secondary-container)}
 .icon-btn:disabled{opacity:.38;pointer-events:none}
@@ -106,7 +151,7 @@ body.dark .icon-btn:hover{background:rgba(255,255,255,.08)}
 .input:focus{outline:none;border-bottom:2px solid var(--md-primary);box-shadow:0 1px 0 0 var(--md-primary)}
 .input.valid{border-bottom-color:var(--md-success);padding-right:36px}
 .input.md-error{border-bottom:2px solid var(--md-error);box-shadow:0 0 0 3px rgba(186,26,26,.12)}
-body.dark .input.md-error{box-shadow:0 0 0 3px rgba(255,180,171,.16)}
+[data-theme="dark"] .input.md-error,[data-theme="midnight"] .input.md-error{box-shadow:0 0 0 3px rgba(255,180,171,.16)}
 textarea.input{resize:vertical;border-radius:var(--shape-xs)}
 select.input{appearance:none;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%2340484c' stroke-width='2'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E");background-repeat:no-repeat;background-position:right 12px center;background-size:18px;padding-right:38px}
 .input-check{position:absolute;right:12px;top:13px;color:var(--md-success);pointer-events:none}
@@ -185,8 +230,28 @@ tr.clickable:hover{background:var(--md-surface-container)}
 pre.json-view{font-size:.7rem;white-space:pre-wrap;max-height:200px;overflow-y:auto;background:var(--md-surface-container-highest);padding:10px;border-radius:var(--shape-sm);font-family:'SF Mono',monospace}
 
 .stat-card{text-align:center;padding:20px 16px}
+.stat-icon{color:var(--md-primary);font-size:22px;opacity:.75;margin-bottom:4px}
 .stat-value{font-size:2.1rem;font-weight:700;letter-spacing:-.02em;line-height:1;color:var(--md-primary)}
 .stat-label{font-size:.7rem;color:var(--md-on-surface-variant);margin-top:6px;text-transform:uppercase;letter-spacing:.05em;font-weight:600}
+
+/* ---- Dashboard hero: logo + profile badge ---- */
+.hero-logo{width:40px;height:40px;border-radius:var(--shape-md);background:var(--md-primary-container);color:var(--md-on-primary-container);display:flex;align-items:center;justify-content:center;flex-shrink:0}
+.profile-badge{display:flex;align-items:center;gap:10px;background:transparent;border:none;cursor:pointer;padding:6px 8px;border-radius:var(--shape-lg);transition:background .15s;max-width:60vw}
+.profile-badge:hover{background:var(--md-surface-container-high)}
+.profile-badge:active{transform:scale(.97)}
+.profile-badge-name{font-size:.82rem;font-weight:600;color:var(--md-on-surface);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:34vw}
+.profile-badge-role{margin-top:2px;display:flex;justify-content:flex-end}
+
+/* ---- Quick Actions grid ---- */
+.quick-actions-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:12px}
+.quick-action{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px;padding:16px 8px;border-radius:var(--shape-lg);background:var(--md-surface-container-low);border:none;cursor:pointer;transition:box-shadow .15s,transform .1s ease;font-family:var(--font);text-align:center;position:relative}
+.quick-action:hover{box-shadow:var(--e1)}
+.quick-action:active{transform:scale(.96)}
+.quick-action:disabled{opacity:.5;cursor:default}
+.quick-action-icon{width:40px;height:40px;border-radius:var(--shape-full);background:var(--md-primary-container);color:var(--md-on-primary-container);display:flex;align-items:center;justify-content:center}
+.quick-action-label{font-size:.72rem;font-weight:600;color:var(--md-on-surface);line-height:1.2}
+.quick-action-note{font-size:.6rem;color:var(--md-on-surface-variant);text-transform:uppercase;letter-spacing:.04em}
+@media(max-width:380px){.quick-actions-grid{grid-template-columns:repeat(2,1fr)}}
 
 .dev-banner{background:var(--md-warning-container);color:var(--md-on-warning-container);padding:10px 16px;text-align:center;font-weight:600;font-size:.76rem;display:flex;align-items:center;justify-content:center;gap:8px}
 .dev-banner .material-symbols-outlined{font-size:18px}

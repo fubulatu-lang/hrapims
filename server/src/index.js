@@ -7,7 +7,7 @@ const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 
 const APP_NAME = 'HRAPIMS';
-const APP_VERSION = '2.1.2';
+const APP_VERSION = '2.2.0';
 
 // In production set JWT_SECRET yourself (Vercel env var) so sessions survive
 // deploys/restarts. Falling back to a random secret is safe but means every
@@ -323,6 +323,24 @@ function buildSortClause(req) {
   const dir = req.query.sortDir === 'asc' ? 'ASC' : 'DESC';
   return `ORDER BY ${column} ${dir}`;
 }
+
+// Dashboard summary counts. One query with FILTER clauses instead of three
+// round trips — cheap even as the table grows since it's a single index
+// scan on created_at rather than three separate COUNT(*) queries.
+app.get('/api/patients/stats', async (req, res) => {
+  try {
+    const result = await pool.query(`
+      SELECT
+        COUNT(*) FILTER (WHERE created_at >= date_trunc('day', now())) AS today,
+        COUNT(*) FILTER (WHERE created_at >= date_trunc('week', now())) AS week,
+        COUNT(*) FILTER (WHERE created_at >= date_trunc('month', now())) AS month,
+        COUNT(*) AS total
+      FROM patients WHERE is_hard_deleted = false
+    `);
+    const s = result.rows[0];
+    res.json({ today: parseInt(s.today), week: parseInt(s.week), month: parseInt(s.month), total: parseInt(s.total) });
+  } catch (error) { console.error(error); res.status(500).json({ error: error.message || 'Server error' }); }
+});
 
 app.get('/api/patients', async (req, res) => {
   try {

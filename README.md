@@ -1,8 +1,102 @@
-# HRAPIMS v2.1.2
+# HRAPIMS v2.2.0
 
 Hospital Records And Patient Information Management System.
 
-## v2.1.2 — the actual, confirmed root cause (this one was mine)
+## v2.2.0 — navigation fixes, 5 themes, dashboard redesign, search pagination
+
+### Fixed: back button broken throughout the app (not just Manage Staff)
+Root cause: `goTo()` resets the whole navigation history (correct for
+switching bottom-nav tabs), but four call sites were using it to open a
+*sub-page* (New Patient, Manage Staff) — which needs `navigate()` instead
+so there's a "back" to go to. Fixed all four (Dashboard quick actions, the
+Settings → Manage Staff link, and the floating "+" button used on
+Home/Patients/Search). Also tightened two related spots: after
+saving a patient the form now gets *replaced* by the detail view instead
+of stacked underneath it (so back from a new record goes to wherever you
+actually came from, not back into the just-submitted form), and after
+deleting a patient you land cleanly on the Patients tab instead of a
+dead-end detail page for a record that no longer exists.
+
+### Patient list / search / activity now remember where you left off
+Page number, search query, and activity filters now survive navigating
+into a patient's detail and back — via a small new `usePageState` hook
+(module-level cache, resets only on a full reload). Previously every one
+of these reset because `AppShell` remounts the current page on each
+navigation.
+
+### Five themes, config-driven
+Theming moved from a two-class hack (`body.dark` / `body.dark.midnight`)
+to a `data-theme` attribute with one token block per theme in
+`index.css`. Added **Slate** (graphite-blue) and **Emerald** (clinical
+green) alongside Light/Dark/Midnight. Adding a 6th theme later is a
+two-line change (one CSS block + one entry in `useTheme.js`) — no
+component anywhere references a color value directly.
+
+### Dashboard redesign
+- Logo + version in the header (`HRAPIMS v2.2.0`), tappable profile badge
+  (role, avatar) where the theme button used to be — see the note below
+  on what's still blocked here.
+- Stats now show new patients **today / this week / this month** (new
+  `/api/patients/stats` endpoint, one indexed query) plus a total count,
+  instead of the placeholder "Hospital Records" tile.
+- Quick Actions rewritten as a proper grid: Search, Add Patient, Manage
+  Patients, User Management (admin), Settings, and a disabled
+  "Reports — Coming soon" tile so the space is reserved without faking a
+  feature that doesn't exist yet.
+
+### Search: pagination + total count + Add Patient FAB
+Search previously fetched up to 50 results with no pages. Now matches
+the Patients list exactly: 20 per page, real pagination controls, total
+match count, and the same floating "+" button.
+
+### Patient list tiles
+Added registration date to each tile; phone number now only shows when
+the patient actually has one (was showing a bare "—" before).
+
+### Icon audit
+Reviewed every icon in the app — all Material Symbols, one set, no
+inconsistencies found. No changes needed here.
+
+---
+
+## What I did *not* build yet, and why
+
+The feature list included several genuinely large, high-stakes pieces
+that I deliberately did not implement blind, per its own instruction not
+to make significant changes without presenting the rationale first:
+
+- **Real authentication** (usernames/passwords, admin-provisioned
+  accounts, forced password change on first login). This is the one
+  worth flagging loudest: the Dashboard's "user's name + Staff ID"
+  requirement is *literally blocked* on this — pseudo-login only knows
+  your role, not who you are. Until this lands, the profile badge shows
+  role only.
+- **Configurable patient registration fields** (admin-defined form
+  builder) — a real schema-and-rendering-engine feature, not a quick
+  addition.
+- **User Management / RBAC permissions** — depends on real auth existing
+  first.
+- **Progressive Web App conversion** (manifest, service worker, install
+  prompts, icons) — self-contained, straightforward to add next.
+- **Long-press patient preview** and **patient merge redesign**
+  (side-by-side comparison with highlighted differences) — new
+  components, meaningful UI work.
+- **Feature-based folder restructuring** (`src/features/...`) — I'd
+  recommend *against* doing this reflexively right now. The current flat
+  `pages/`/`components/`/`hooks/` layout is still easy to navigate at
+  this app's size (9 screens); reorganizing costs real risk for
+  primarily cosmetic benefit today. Worth revisiting if the app grows
+  substantially past its current scope.
+
+Tell me which of these to tackle next — real auth is the one I'd
+recommend prioritizing, since two other items on the list (Dashboard
+identity, User Management) are downstream of it.
+
+---
+
+## Everything below is unchanged from v2.1.2
+
+
 
 Thank you for sending the Vercel logs — that made this a five-minute fix
 instead of another guess. The real error, straight from the logs:

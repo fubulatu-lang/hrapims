@@ -26,7 +26,7 @@ const EMPTY_DRAFT = {
 };
 
 export function PatientFormPage() {
-  const { params, navigate, back } = useNavigation();
+  const { params, navigate, replace, back } = useNavigation();
   const isEdit = !!params.folderNumber;
   const existing = useApiQuery(isEdit ? `/patients/${params.folderNumber}` : null);
 
@@ -36,7 +36,7 @@ export function PatientFormPage() {
   if (isEdit && existing.loading) return (<><TopBar title="Edit Patient" leading={<BackButton onClick={back} />} /></>);
   if (isEdit && existing.error) return (<><TopBar title="Edit Patient" leading={<BackButton onClick={back} />} /><div className="main-content"><Alert variant="error">{existing.error}</Alert></div></>);
 
-  return <PatientFormBody isEdit={isEdit} initial={existing.data} onBack={back} onSaved={navigate} />;
+  return <PatientFormBody isEdit={isEdit} initial={existing.data} onBack={back} onSaved={replace} />;
 }
 
 function patientToDraft(p) {

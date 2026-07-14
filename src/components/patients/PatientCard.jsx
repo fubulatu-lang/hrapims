@@ -1,7 +1,7 @@
 import { Avatar } from '../ui/Avatar';
 import { Chip } from '../ui/Chip';
 import { Icon } from '../ui/Icon';
-import { titleCase } from '../../lib/format';
+import { titleCase, formatDate } from '../../lib/format';
 
 /**
  * A single patient row used in both the Patients list and Search results,
@@ -33,7 +33,8 @@ export function PatientCard({ patient: p, onClick }) {
           <span>{p.age ?? '—'} yrs</span>
           <span>{p.gender}</span>
           <span>{idLabel}: {idValue}</span>
-          <span><Icon name="call" /> {p.phone_number || '—'}</span>
+          {p.phone_number && <span><Icon name="call" /> {p.phone_number}</span>}
+          <span><Icon name="event" /> {formatDate(p.created_at)}</span>
         </div>
       </div>
     </button>

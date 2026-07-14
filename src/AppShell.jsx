@@ -32,7 +32,7 @@ const PAGES = {
 };
 
 export function AppShell() {
-  const { view, goTo } = useNavigation();
+  const { view, goTo, navigate } = useNavigation();
   const { isAdmin } = useSession();
   const navItems = BASE_NAV_ITEMS.filter((n) => !n.adminOnly || isAdmin);
   const order = navItems.map((n) => n.id);
@@ -42,7 +42,7 @@ export function AppShell() {
   // page itself would 200 fine (the API has no role check yet either, see
   // server/src/index.js), but the UI shouldn't offer it, so redirect home.
   const Page = view === 'activity' && !isAdmin ? DashboardPage : (PAGES[view] || DashboardPage);
-  const showFab = view === 'dashboard' || view === 'patientList';
+  const showFab = view === 'dashboard' || view === 'patientList' || view === 'search';
 
   // Direction drives which way the page slides in — works identically
   // whether the tab changed via swipe or a direct bottom-nav tap.
@@ -72,7 +72,7 @@ export function AppShell() {
       <div key={view} className={transitionClass} {...swipeHandlers}>
         <Page />
       </div>
-      {showFab && <Fab icon="add" label="New Patient" onClick={() => goTo('patientForm')} />}
+      {showFab && <Fab icon="add" label="New Patient" onClick={() => navigate('patientForm')} />}
       <BottomNav items={navItems} activeId={isNavView ? view : null} onChange={goTo} />
     </div>
   );

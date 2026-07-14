@@ -1,21 +1,27 @@
-import { useState } from 'react';
-import { TopBar, Icon, Spinner, Alert, EmptyState, SortControl } from '../components/ui';
+import { TopBar, IconButton, Icon, Spinner, Alert, EmptyState, SortControl } from '../components/ui';
 import { PatientCard } from '../components/patients/PatientCard';
 import { useDebounce } from '../hooks/useDebounce';
 import { useApiQuery } from '../hooks/useApiQuery';
 import { useSort } from '../hooks/useSort';
+import { usePageState } from '../hooks/usePageState';
 import { useNavigation } from '../context/NavigationContext';
 
 export function SearchPage() {
-  const [query, setQuery] = useState('');
+  const [query, setQuery] = usePageState('search.query', '');
+  const [page, setPage] = usePageState('search.page', 1);
   const debounced = useDebounce(query, 400);
   const { navigate } = useNavigation();
   const { sortBy, sortDir, setSort, queryParams } = useSort();
   const canSearch = debounced.trim().length >= 3;
   const { data, loading, error } = useApiQuery(
-    canSearch ? `/patients/search?query=${encodeURIComponent(debounced)}&limit=50&${queryParams}` : null,
-    [debounced, queryParams]
+    canSearch ? `/patients/search?query=${encodeURIComponent(debounced)}&page=${page}&limit=20&${queryParams}` : null,
+    [debounced, page, queryParams]
   );
+
+  function handleQueryChange(v) {
+    setQuery(v);
+    setPage(1);
+  }
 
   return (
     <>
@@ -28,7 +34,7 @@ export function SearchPage() {
             style={{ border: 'none', background: 'transparent', padding: '12px 0' }}
             placeholder="Name, ID, phone, location, allergies..."
             value={query}
-            onChange={(e) => setQuery(e.target.value)}
+            onChange={(e) => handleQueryChange(e.target.value)}
             autoFocus
             aria-label="Search patients"
           />
@@ -45,13 +51,20 @@ export function SearchPage() {
             <>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10, flexWrap: 'wrap', gap: 8 }}>
                 <p style={{ fontSize: '.78rem', color: 'var(--md-on-surface-variant)' }}>
-                  Found {data.patients.length} patient(s)
+                  {data.pagination.total} matching patient{data.pagination.total === 1 ? '' : 's'}
                 </p>
-                <SortControl sortBy={sortBy} sortDir={sortDir} onChange={setSort} />
+                <SortControl sortBy={sortBy} sortDir={sortDir} onChange={(by, dir) => { setSort(by, dir); setPage(1); }} />
               </div>
               {data.patients.map((p) => (
                 <PatientCard key={p.folder_number} patient={p} onClick={() => navigate('patientDetail', { folderNumber: p.folder_number })} />
               ))}
+              {data.pagination.pages > 1 && (
+                <div style={{ textAlign: 'center', margin: '20px 0', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 }}>
+                  <IconButton icon="chevron_left" label="Previous page" variant="tonal" disabled={page <= 1} onClick={() => setPage((p) => p - 1)} />
+                  <span style={{ fontWeight: 600, fontSize: '.85rem' }}>Page {page} of {data.pagination.pages}</span>
+                  <IconButton icon="chevron_right" label="Next page" variant="tonal" disabled={page >= data.pagination.pages} onClick={() => setPage((p) => p + 1)} />
+                </div>
+              )}
             </>
           )}
         </div>

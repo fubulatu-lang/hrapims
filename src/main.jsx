@@ -4,10 +4,8 @@ import App from './App.jsx';
 import './index.css';
 
 // Applied here (not inside a component) so the correct theme is present
-// for the very first paint instead of flashing light mode first.
-const theme = localStorage.getItem('hrapims.theme') || 'light';
-document.body.classList.toggle('dark', theme === 'dark' || theme === 'midnight');
-document.body.classList.toggle('midnight', theme === 'midnight');
+// for the very first paint instead of flashing the default theme first.
+document.body.dataset.theme = localStorage.getItem('hrapims.theme') || 'light';
 
 createRoot(document.getElementById('root')).render(
   <StrictMode>

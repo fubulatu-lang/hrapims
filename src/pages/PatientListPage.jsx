@@ -1,12 +1,12 @@
-import { useState } from 'react';
 import { TopBar, IconButton, Spinner, Alert, EmptyState, Button, SortControl } from '../components/ui';
 import { PatientCard } from '../components/patients/PatientCard';
 import { useApiQuery } from '../hooks/useApiQuery';
 import { useSort } from '../hooks/useSort';
+import { usePageState } from '../hooks/usePageState';
 import { useNavigation } from '../context/NavigationContext';
 
 export function PatientListPage() {
-  const [page, setPage] = useState(1);
+  const [page, setPage] = usePageState('patientList.page', 1);
   const { navigate } = useNavigation();
   const { sortBy, sortDir, setSort, queryParams } = useSort();
   const { data, loading, error } = useApiQuery(`/patients?page=${page}&limit=20&showDeleted=true&${queryParams}`, [page, queryParams]);
