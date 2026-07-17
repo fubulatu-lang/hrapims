@@ -4,10 +4,10 @@ import { useSession } from '../context/SessionContext';
 import { useNavigation } from '../context/NavigationContext';
 import { titleCase } from '../lib/format';
 
-const APP_VERSION = '2.2.0';
+const APP_VERSION = '2.3.0';
 
 export function DashboardPage() {
-  const { staffLabel, role, isAdmin } = useDisplaySession();
+  const { staff, staffLabel, role, isAdmin } = useDisplaySession();
   const { goTo, navigate } = useNavigation();
 
   const stats = useApiQuery('/patients/stats');
@@ -29,7 +29,7 @@ export function DashboardPage() {
                 <Chip variant={isAdmin ? 'primary' : 'neutral'}>{role}</Chip>
               </div>
             </div>
-            <Avatar firstName={isAdmin ? 'A' : 'S'} lastName="" />
+            <Avatar firstName={staff.firstName} lastName={staff.lastName} />
           </button>
         }
       />
@@ -108,11 +108,7 @@ function QuickAction({ icon, label, onClick, disabled, note }) {
 
 /** Small local helper so the JSX above stays readable. */
 function useDisplaySession() {
-  const { role, isAdmin } = useSession();
-  // The pseudo-login has no staff name or ID yet — once real credential
-  // auth lands (see SessionContext docstring) this reads session.staff's
-  // real name/ID instead of the role placeholder, and nothing else here
-  // needs to change since it's already the single place that reads it.
-  const staffLabel = titleCase(role === 'ADMIN' ? 'Administrator' : 'Staff');
-  return { staffLabel, role, isAdmin };
+  const { staff, role, isAdmin } = useSession();
+  const staffLabel = titleCase(staff.firstName);
+  return { staff, staffLabel, role, isAdmin };
 }

@@ -5,7 +5,7 @@
  *
  * @param {{name: string, className?: string, ['aria-hidden']?: boolean}} props
  * @example <Icon name="home" />
- * @example <Icon name="delete" className="chev" />
+ * @example <Icon name="delete" className="danger-icon" />
  */
 export function Icon({ name, className = '', ...rest }) {
   return (

@@ -1,14 +1,39 @@
+import { useState } from 'react';
 import { Icon } from '../components/ui/Icon';
+import { TextField } from '../components/ui/TextField';
+import { Button } from '../components/ui/Button';
+import { Alert } from '../components/ui/Alert';
 import { useSession } from '../context/SessionContext';
 
 /**
- * Role-select screen. This is a PSEUDO login: tapping a card sets the
- * role client-side and drops straight into that role's UI — there is no
- * credential check. See SessionContext for how to upgrade this to real
- * auth without touching any other page.
+ * Real credential sign-in. Success re-renders `App`'s Gate with an
+ * authenticated session — this component doesn't need to know or care
+ * whether that lands on the main app or the forced password-change
+ * screen, `mustChangePassword` on the session decides that.
  */
 export function LoginPage() {
   const { login } = useSession();
+  const [username, setUsername] = useState('');
+  const [password, setPassword] = useState('');
+  const [error, setError] = useState(null);
+  const [submitting, setSubmitting] = useState(false);
+
+  async function handleSubmit(e) {
+    e.preventDefault();
+    if (!username.trim() || !password) {
+      setError('Enter your username and password');
+      return;
+    }
+    setError(null);
+    setSubmitting(true);
+    try {
+      await login(username.trim(), password);
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setSubmitting(false);
+    }
+  }
 
   return (
     <div className="login-shell">
@@ -16,27 +41,28 @@ export function LoginPage() {
       <div className="login-title">HRAPIMS</div>
       <div className="login-sub">Hospital Records &amp; Patient Information Management</div>
 
-      <button className="role-card" onClick={() => login('STAFF')}>
-        <div className="role-icon"><Icon name="badge" /></div>
-        <div>
-          <h3>Staff</h3>
-          <p>Register, search and update patient records</p>
-        </div>
-        <Icon name="chevron_right" className="chev" />
-      </button>
+      <form onSubmit={handleSubmit} style={{ width: '100%' }}>
+        <Alert variant="error">{error}</Alert>
+        <TextField
+          label="Username"
+          required
+          autoComplete="username"
+          value={username}
+          onChange={setUsername}
+        />
+        <TextField
+          label="Password"
+          type="password"
+          required
+          autoComplete="current-password"
+          value={password}
+          onChange={setPassword}
+        />
+        <Button type="submit" fullWidth loading={submitting} icon="login">Sign In</Button>
+      </form>
 
-      <button className="role-card" onClick={() => login('ADMIN')}>
-        <div className="role-icon"><Icon name="admin_panel_settings" /></div>
-        <div>
-          <h3>Administrator</h3>
-          <p>Full access plus staff account management</p>
-        </div>
-        <Icon name="chevron_right" className="chev" />
-      </button>
-
-      <p style={{ fontSize: '.7rem', color: 'var(--md-on-surface-variant)', textAlign: 'center', marginTop: 8 }}>
-        This is a preview build — tapping a role signs you in directly with no password.
-        Real credential sign-in is coming before go-live.
+      <p style={{ fontSize: '.72rem', color: 'var(--md-on-surface-variant)', textAlign: 'center', marginTop: 16 }}>
+        Forgot your password? Ask an administrator to reset it from Staff Management.
       </p>
     </div>
   );

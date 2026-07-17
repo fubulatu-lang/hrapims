@@ -5,12 +5,14 @@ import { useNavigation } from '../context/NavigationContext';
 import { useTheme, THEMES } from '../hooks/useTheme';
 import { HAPTIC_LEVELS, getHapticLevel, setHapticLevel, triggerHaptic } from '../lib/haptics';
 import { SOUND_LEVELS, getSoundLevel, setSoundLevel, playTouchSound } from '../lib/touchSound';
+import { validatePassword } from '../lib/validation';
 import { api } from '../lib/api';
+import { titleCase } from '../lib/format';
 
-const APP_VERSION = '2.2.0';
+const APP_VERSION = '2.3.0';
 
 export function SettingsPage() {
-  const { role, isAdmin, logout } = useSession();
+  const { staff, role, isAdmin, logout } = useSession();
   const { navigate } = useNavigation();
 
   function handleSignOut() {
@@ -23,13 +25,17 @@ export function SettingsPage() {
       <div className="main-content">
         <div className="section-header">Account</div>
         <Card variant="elevated" style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
-          <Avatar firstName={isAdmin ? 'A' : 'S'} lastName="" />
-          <div style={{ flex: 1 }}>
-            <div className="patient-name">{isAdmin ? 'Administrator' : 'Staff'} session</div>
-            <Chip variant={isAdmin ? 'primary' : 'neutral'}>{role}</Chip>
+          <Avatar firstName={staff.firstName} lastName={staff.lastName} />
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div className="patient-name">{titleCase(staff.firstName)} {titleCase(staff.lastName)}</div>
+            <div style={{ fontSize: '.72rem', color: 'var(--md-on-surface-variant)', marginTop: 2 }}>
+              @{staff.username} · ID {staff.id.slice(0, 8)}
+            </div>
+            <div style={{ marginTop: 6 }}><Chip variant={isAdmin ? 'primary' : 'neutral'}>{role}</Chip></div>
           </div>
           <Button variant="outlined" size="sm" icon="logout" onClick={handleSignOut}>Sign Out</Button>
         </Card>
+        <ChangePasswordCard />
 
         {isAdmin && (
           <>
@@ -37,7 +43,7 @@ export function SettingsPage() {
             <Card>
               <CardTitle icon="groups">Manage Staff</CardTitle>
               <p style={{ fontSize: '.8rem', color: 'var(--md-on-surface-variant)', marginBottom: 12 }}>
-                Add staff and administrator accounts, reset PINs, or deactivate access.
+                Add staff and administrator accounts, reset passwords, or deactivate access.
               </p>
               <Button variant="tonal" size="sm" icon="manage_accounts" onClick={() => navigate('staffManage')}>
                 Open Staff Management
@@ -50,10 +56,10 @@ export function SettingsPage() {
         <Card>
           <CardTitle icon="download">Export Data</CardTitle>
           <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-            <Button variant="tonal" size="sm" icon="description" onClick={() => window.open(api.fileUrl('/export/patients'), '_blank')}>
+            <Button variant="tonal" size="sm" icon="description" onClick={() => api.download('/export/patients', 'hrapims-patients.csv')}>
               Patients CSV
             </Button>
-            <Button variant="outlined" size="sm" icon="description" onClick={() => window.open(api.fileUrl('/export/activity'), '_blank')}>
+            <Button variant="outlined" size="sm" icon="description" onClick={() => api.download('/export/activity', 'hrapims-activity.csv')}>
               Activity CSV
             </Button>
           </div>
@@ -219,6 +225,47 @@ function FolderFormatCard() {
           {message && <Alert variant={message.type}>{message.text}</Alert>}
         </>
       )}
+    </Card>
+  );
+}
+
+function ChangePasswordCard() {
+  const [currentPassword, setCurrentPassword] = useState('');
+  const [newPassword, setNewPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
+  const [error, setError] = useState(null);
+  const [success, setSuccess] = useState(null);
+  const [saving, setSaving] = useState(false);
+
+  async function submit() {
+    setError(null);
+    setSuccess(null);
+    if (!currentPassword) { setError('Enter your current password'); return; }
+    const policyError = validatePassword(newPassword);
+    if (policyError) { setError(policyError); return; }
+    if (newPassword !== confirmPassword) { setError('New passwords do not match'); return; }
+    setSaving(true);
+    try {
+      await api.post('/auth/change-password', { currentPassword, newPassword });
+      setSuccess('Password updated');
+      setCurrentPassword(''); setNewPassword(''); setConfirmPassword('');
+    } catch (e) {
+      setError(e.message);
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <Card>
+      <CardTitle icon="password">Change Password</CardTitle>
+      <TextField label="Current Password" type="password" autoComplete="current-password" value={currentPassword} onChange={setCurrentPassword} />
+      <TextField label="New Password" type="password" autoComplete="new-password" value={newPassword} onChange={setNewPassword}
+        helperText="At least 8 characters, with a letter and a number" />
+      <TextField label="Confirm New Password" type="password" autoComplete="new-password" value={confirmPassword} onChange={setConfirmPassword} />
+      <Button variant="tonal" size="sm" loading={saving} onClick={submit}>Update Password</Button>
+      {error && <Alert variant="error">{error}</Alert>}
+      {success && <Alert variant="success">{success}</Alert>}
     </Card>
   );
 }

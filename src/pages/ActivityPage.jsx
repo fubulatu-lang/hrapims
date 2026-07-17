@@ -103,5 +103,5 @@ function downloadActivity(filters) {
   const params = new URLSearchParams();
   if (filters.start) params.set('startDate', filters.start);
   if (filters.end) params.set('endDate', filters.end);
-  window.open(api.fileUrl(`/export/activity?${params.toString()}`), '_blank');
+  api.download(`/export/activity?${params.toString()}`, 'hrapims-activity.csv');
 }

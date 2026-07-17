@@ -1,8 +1,74 @@
-# HRAPIMS v2.2.0
+# HRAPIMS v2.3.0
 
 Hospital Records And Patient Information Management System.
 
-## v2.2.0 — navigation fixes, 5 themes, dashboard redesign, search pagination
+## v2.3.0 — real authentication (Priority 3 + 4)
+
+The pseudo-login (tap Staff/Administrator, no credentials) is gone.
+Replaced with real username/password accounts, admin-provisioned only.
+
+### What changed
+- **Login**: username + password, verified server-side (bcrypt), JWT
+  session attached to every API request. Auth is now actually enforced —
+  every `/api/*` route requires a valid session except `/api/health` and
+  `/api/auth/login` themselves.
+- **Accounts are admin-provisioned only.** There is no self-registration.
+  Creating a staff account generates a temporary password (shown once,
+  shared out of band), same pattern as before with PINs, just with real
+  passwords now.
+- **Forced password change on first login** — a dedicated screen blocks
+  the rest of the app until resolved, no skip option, since the temp
+  password was only ever meant to be used once.
+- **Change Password** is available any time from Settings (requires your
+  current password there; the forced first-login screen skips that check
+  since the temp password *is* the proof of identity in that moment).
+- **Centralized password policy** (`src/lib/validation.js` on the client,
+  mirrored server-side in `server/src/index.js` — the server copy is the
+  one actually enforced): at least 8 characters, at least one letter and
+  one number. One place to change if the policy ever changes.
+- **Dashboard finally shows real identity** — name, role, and a short
+  staff ID in the profile badge, unblocked now that accounts are real.
+- **CSV export fixed for real auth**: the old `window.open(url)` pattern
+  can't carry an Authorization header, so it would have silently 401'd.
+  Replaced with a proper authenticated blob download
+  (`api.download()` in `lib/api.js`).
+- Migration is additive and safe to run on your existing database: the
+  old `pin_hash`/`must_change_pin` columns are left in place (never
+  dropped), new `username`/`password_hash`/`must_change_password` columns
+  are added alongside them. If your database already has staff rows from
+  the old PIN system, the bootstrap admin still gets created correctly
+  (it checks for *any* row with a real password set, not just "any row
+  exists") — otherwise an upgraded install could end up with zero usable
+  accounts.
+- **Designed for MFA/SSO later**: `login()` in `SessionContext` is
+  already the single seam between "proved who you are" and "have a
+  session" — an MFA step or SSO redirect slots in there without another
+  rewrite.
+
+### First login after this update
+Your Vercel deployment logs will print a fresh admin account on the next
+cold start:
+```
+DEFAULT ADMIN ACCOUNT CREATED
+Username: admin
+Password: <random>
+```
+Sign in with that, you'll be forced to set a real password immediately.
+Use Settings → Manage Staff to create real accounts for everyone else
+(each gets their own temporary password, shown once).
+
+### Not done in this pass
+**User Management permissions/RBAC** beyond role (Staff/Admin) — the doc
+asks for "configure permissions" as a forward-looking capability. Role
+already gates every admin-only action in the app; a granular
+permissions system beyond that is a separate, larger piece of work I
+haven't built yet.
+
+---
+
+## Everything below is unchanged from v2.2.0
+
+
 
 ### Fixed: back button broken throughout the app (not just Manage Staff)
 Root cause: `goTo()` resets the whole navigation history (correct for

@@ -7,7 +7,7 @@ const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 
 const APP_NAME = 'HRAPIMS';
-const APP_VERSION = '2.2.0';
+const APP_VERSION = '2.3.0';
 
 // In production set JWT_SECRET yourself (Vercel env var) so sessions survive
 // deploys/restarts. Falling back to a random secret is safe but means every
@@ -80,8 +80,9 @@ async function initDB() {
         first_name TEXT NOT NULL,
         last_name TEXT NOT NULL,
         role TEXT NOT NULL DEFAULT 'STAFF',
-        pin_hash TEXT NOT NULL,
-        must_change_pin BOOLEAN DEFAULT true,
+        username TEXT,
+        password_hash TEXT,
+        must_change_password BOOLEAN DEFAULT true,
         is_active BOOLEAN DEFAULT true,
         failed_attempts INT DEFAULT 0,
         locked_until TIMESTAMP,
@@ -90,6 +91,14 @@ async function initDB() {
         updated_at TIMESTAMP DEFAULT NOW()
       )
     `);
+    // Additive migration: v2.3.0 replaced PIN sign-in with username/password.
+    // The old pin_hash/must_change_pin columns are left in place (never
+    // dropped) — harmless dead columns are a much smaller risk than a
+    // destructive migration on a live table.
+    await client.query(`ALTER TABLE staff ADD COLUMN IF NOT EXISTS username TEXT`);
+    await client.query(`ALTER TABLE staff ADD COLUMN IF NOT EXISTS password_hash TEXT`);
+    await client.query(`ALTER TABLE staff ADD COLUMN IF NOT EXISTS must_change_password BOOLEAN DEFAULT true`);
+    await client.query(`CREATE UNIQUE INDEX IF NOT EXISTS staff_username_unique_idx ON staff (username) WHERE username IS NOT NULL`);
     await client.query(`
       CREATE TABLE IF NOT EXISTS activity_logs (
         id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -117,21 +126,25 @@ async function initDB() {
       await client.query("INSERT INTO system_settings (id) VALUES ('main') ON CONFLICT (id) DO NOTHING");
     }
 
-    // Bootstrap: guarantee there is always at least one way in. Runs only
-    // when the staff table is completely empty (fresh install).
-    const staffCheck = await client.query('SELECT id FROM staff LIMIT 1');
+    // Bootstrap: guarantee there is always at least one way in. Keyed off
+    // password_hash (not "any staff row exists") so this still fires even
+    // on a database that already has old PIN-only staff rows from before
+    // the v2.3.0 auth migration — those rows can't log in under the new
+    // scheme, so without this guard an upgraded install could end up with
+    // zero usable accounts.
+    const staffCheck = await client.query('SELECT id FROM staff WHERE password_hash IS NOT NULL LIMIT 1');
     if (staffCheck.rows.length === 0) {
-      const pin = String(crypto.randomInt(100000, 999999));
-      const pinHash = await bcrypt.hash(pin, 10);
+      const initialPassword = generateTempPassword();
+      const passwordHash = await bcrypt.hash(initialPassword, 10);
       await client.query(
-        "INSERT INTO staff (first_name, last_name, role, pin_hash, must_change_pin) VALUES ('System', 'Administrator', 'ADMIN', $1, true)",
-        [pinHash]
+        "INSERT INTO staff (first_name, last_name, role, username, password_hash, must_change_password) VALUES ('System', 'Administrator', 'ADMIN', 'admin', $1, true)",
+        [passwordHash]
       );
       console.log('============================================================');
       console.log('DEFAULT ADMIN ACCOUNT CREATED');
-      console.log('Name: System Administrator');
-      console.log('PIN: ' + pin);
-      console.log('You will be asked to set a new PIN on first login. SAVE THIS PIN.');
+      console.log('Username: admin');
+      console.log('Password: ' + initialPassword);
+      console.log('You will be asked to set a new password on first login. SAVE THIS.');
       console.log('============================================================');
     }
     console.log(`${APP_NAME} v${APP_VERSION}: database ready`);
@@ -162,6 +175,38 @@ app.use(async (req, res, next) => {
 function titleCase(str) {
   if (!str || typeof str !== 'string') return str;
   return str.trim().toLowerCase().replace(/(^|[\s\-'])([a-z])/g, (m, sep, ch) => sep + ch.toUpperCase());
+}
+
+// ============ PASSWORD POLICY (centralized — the one place this lives) ============
+// Mirrored in src/lib/validation.js on the client for instant feedback;
+// this server copy is the one that's actually enforced. Keep both in sync
+// if the policy ever changes — client-side is UX only, this is the gate.
+const PASSWORD_MIN_LENGTH = 8;
+function validatePassword(password) {
+  if (!password || typeof password !== 'string') return 'Password is required';
+  if (password.length < PASSWORD_MIN_LENGTH) return `Password must be at least ${PASSWORD_MIN_LENGTH} characters`;
+  if (!/[a-zA-Z]/.test(password)) return 'Password must contain at least one letter';
+  if (!/[0-9]/.test(password)) return 'Password must contain at least one number';
+  return null;
+}
+function validateUsername(username) {
+  if (!username || typeof username !== 'string') return 'Username is required';
+  if (!/^[a-zA-Z0-9._-]{3,30}$/.test(username)) return 'Username must be 3-30 characters (letters, numbers, dots, underscores, hyphens only)';
+  return null;
+}
+// Generates a random password that always satisfies the policy above —
+// used for admin-provisioned initial passwords and resets, never chosen
+// by a human, so it's shown once and the person is forced to change it.
+function generateTempPassword() {
+  const letters = 'abcdefghjkmnpqrstuvwxyzABCDEFGHJKMNPQRSTUVWXYZ';
+  const digits = '23456789';
+  const all = letters + digits;
+  let pw = '';
+  for (let i = 0; i < 8; i++) pw += all[crypto.randomInt(all.length)];
+  // Guarantee both classes are present regardless of the random draw above.
+  pw += letters[crypto.randomInt(letters.length)];
+  pw += digits[crypto.randomInt(digits.length)];
+  return pw;
 }
 
 function calculateAge(dob) {
@@ -219,6 +264,10 @@ async function logActivity(req, action, entityType, entityId, patientId, details
 function signSession(staff) {
   return jwt.sign({ id: staff.id, role: staff.role, name: staff.first_name + ' ' + staff.last_name }, JWT_SECRET, { expiresIn: SESSION_TTL });
 }
+// Deliberately just a JWT-in-a-header today, not a session store — this is
+// the seam future MFA/SSO would plug into (verify the credential, then
+// still fall through to signSession() the same way), without touching any
+// route handler below.
 function authenticate(req, res, next) {
   const header = req.headers.authorization || '';
   const token = header.startsWith('Bearer ') ? header.slice(7) : null;
@@ -243,72 +292,69 @@ app.get('/api/health', (req, res) => { res.json({ status: 'ok', app: APP_NAME, v
 
 // ---- Public auth routes (no session required yet) ----
 
-// Names + roles only, for the tap-to-select login picker. No PINs, no
-// timestamps, nothing an unauthenticated caller shouldn't see.
-app.get('/api/staff/directory', async (req, res) => {
-  try {
-    const role = req.query.role === 'ADMIN' ? 'ADMIN' : 'STAFF';
-    const result = await pool.query(
-      'SELECT id, first_name, last_name FROM staff WHERE is_active = true AND role = $1 ORDER BY first_name, last_name',
-      [role]
-    );
-    res.json({ staff: result.rows });
-  } catch (error) { console.error(error); res.status(500).json({ error: error.message || 'Server error' }); }
-});
-
 app.post('/api/auth/login', async (req, res) => {
   try {
-    const { staffId, pin } = req.body;
-    if (!staffId || !pin) return res.status(400).json({ error: 'Select your name and enter your PIN' });
-    const result = await pool.query('SELECT * FROM staff WHERE id = $1', [staffId]);
+    const { username, password } = req.body;
+    if (!username || !password) return res.status(400).json({ error: 'Enter your username and password' });
+    const result = await pool.query('SELECT * FROM staff WHERE lower(username) = lower($1)', [username]);
     const staff = result.rows[0];
-    if (!staff || !staff.is_active) return res.status(401).json({ error: 'Incorrect PIN' });
+    // Same generic error whether the username doesn't exist or the
+    // password is wrong — don't reveal which one it was.
+    if (!staff || !staff.is_active || !staff.password_hash) return res.status(401).json({ error: 'Incorrect username or password' });
     if (staff.locked_until && new Date(staff.locked_until) > new Date()) {
       return res.status(423).json({ error: 'Account locked after too many attempts. Contact an administrator.' });
     }
-    const valid = await bcrypt.compare(pin, staff.pin_hash);
+    const valid = await bcrypt.compare(password, staff.password_hash);
     if (!valid) {
       const fails = staff.failed_attempts + 1;
       const lock = fails >= 5 ? new Date(Date.now() + 15 * 60 * 1000) : null;
       await pool.query('UPDATE staff SET failed_attempts = $1, locked_until = $2 WHERE id = $3', [fails, lock, staff.id]);
-      return res.status(401).json({ error: lock ? 'Too many attempts. Account locked for 15 minutes.' : 'Incorrect PIN' });
+      return res.status(401).json({ error: lock ? 'Too many attempts. Account locked for 15 minutes.' : 'Incorrect username or password' });
     }
     await pool.query('UPDATE staff SET failed_attempts = 0, locked_until = NULL, last_login_at = NOW() WHERE id = $1', [staff.id]);
     const token = signSession(staff);
     res.json({
       token,
-      staff: { id: staff.id, firstName: staff.first_name, lastName: staff.last_name, role: staff.role, mustChangePin: staff.must_change_pin },
+      staff: {
+        id: staff.id, firstName: staff.first_name, lastName: staff.last_name, role: staff.role,
+        username: staff.username, mustChangePassword: staff.must_change_password,
+      },
     });
   } catch (error) { console.error(error); res.status(500).json({ error: error.message || 'Server error' }); }
 });
 
-// Every route below this line WOULD require a valid session once real
-// login is switched on. For now the app uses a client-side-only "pick your
-// role" pseudo-login (no credentials), so the API stays open — matching
-// that reality instead of silently 401-ing a UI that never sends a token.
-// The JWT/bcrypt/staff-table plumbing above is real and ready; when you
-// wire up real credential auth, uncomment the line below (and the
-// `requireAdmin` guards further down) to actually enforce it.
-// app.use('/api', authenticate);
-
+// Every route below this line requires a valid session — real credential
+// auth now exists (username/password, bcrypt, JWT), so this is actually
+// enforced rather than just built-and-dormant.
+app.use('/api', authenticate);
 app.get('/api/auth/me', async (req, res) => {
   try {
-    if (!req.staff) return res.status(401).json({ error: 'Not signed in' });
-    const result = await pool.query('SELECT id, first_name, last_name, role, must_change_pin FROM staff WHERE id = $1', [req.staff.id]);
+    const result = await pool.query('SELECT id, first_name, last_name, role, username, must_change_password FROM staff WHERE id = $1', [req.staff.id]);
     if (result.rows.length === 0) return res.status(404).json({ error: 'Not found' });
     const s = result.rows[0];
-    res.json({ id: s.id, firstName: s.first_name, lastName: s.last_name, role: s.role, mustChangePin: s.must_change_pin });
+    res.json({ id: s.id, firstName: s.first_name, lastName: s.last_name, role: s.role, username: s.username, mustChangePassword: s.must_change_password });
   } catch (error) { console.error(error); res.status(500).json({ error: error.message || 'Server error' }); }
 });
 
-app.post('/api/auth/change-pin', async (req, res) => {
+app.post('/api/auth/change-password', async (req, res) => {
   try {
-    if (!req.staff) return res.status(401).json({ error: 'Not signed in' });
-    const { newPin } = req.body;
-    if (!/^[0-9]{4,6}$/.test(newPin || '')) return res.status(400).json({ error: '4-6 digit numeric PIN required' });
-    const pinHash = await bcrypt.hash(newPin, 10);
-    await pool.query('UPDATE staff SET pin_hash = $1, must_change_pin = false WHERE id = $2', [pinHash, req.staff.id]);
-    res.json({ message: 'PIN updated' });
+    const { currentPassword, newPassword } = req.body;
+    const policyError = validatePassword(newPassword);
+    if (policyError) return res.status(400).json({ error: policyError });
+    const result = await pool.query('SELECT * FROM staff WHERE id = $1', [req.staff.id]);
+    const staff = result.rows[0];
+    if (!staff) return res.status(404).json({ error: 'Not found' });
+    // Skip the current-password check only on a forced first-login change,
+    // where the person is proving identity via the temp password they were
+    // just handed — everywhere else (Settings), current password is required.
+    if (!staff.must_change_password) {
+      if (!currentPassword) return res.status(400).json({ error: 'Enter your current password' });
+      const valid = await bcrypt.compare(currentPassword, staff.password_hash || '');
+      if (!valid) return res.status(401).json({ error: 'Current password is incorrect' });
+    }
+    const passwordHash = await bcrypt.hash(newPassword, 10);
+    await pool.query('UPDATE staff SET password_hash = $1, must_change_password = false WHERE id = $2', [passwordHash, req.staff.id]);
+    res.json({ message: 'Password updated' });
   } catch (error) { console.error(error); res.status(500).json({ error: error.message || 'Server error' }); }
 });
 
@@ -517,7 +563,7 @@ app.delete('/api/patients/:folderNumber', async (req, res) => {
   } catch (error) { console.error(error); res.status(500).json({ error: error.message || 'Server error' }); }
 });
 
-app.post('/api/patients/:folderNumber/restore', async (req, res) => {
+app.post('/api/patients/:folderNumber/restore', requireAdmin, async (req, res) => {
   try {
     await pool.query('UPDATE patients SET is_deleted = false, deleted_at = NULL WHERE folder_number = $1', [req.params.folderNumber]);
     await logActivity(req, 'RESTORE', 'PATIENT', req.params.folderNumber, req.params.folderNumber);
@@ -525,7 +571,7 @@ app.post('/api/patients/:folderNumber/restore', async (req, res) => {
   } catch (error) { console.error(error); res.status(500).json({ error: error.message || 'Server error' }); }
 });
 
-app.delete('/api/patients/:folderNumber/permanent', async (req, res) => {
+app.delete('/api/patients/:folderNumber/permanent', requireAdmin, async (req, res) => {
   try {
     if (req.body.confirmation !== 'DELETE') return res.status(400).json({ error: 'Type DELETE to confirm' });
     await pool.query('UPDATE patients SET is_hard_deleted = true, hard_deleted_at = NOW(), is_deleted = false, deleted_at = NULL WHERE folder_number = $1', [req.params.folderNumber]);
@@ -585,36 +631,46 @@ app.get('/api/activity/filters', async (req, res) => {
 
 // ---- Staff management (admin only) ----
 
-app.get('/api/staff', async (req, res) => {
+app.get('/api/staff', requireAdmin, async (req, res) => {
   try {
     const result = await pool.query(
-      'SELECT id, first_name, last_name, role, is_active, must_change_pin, failed_attempts, locked_until, last_login_at, created_at FROM staff ORDER BY created_at DESC'
+      'SELECT id, first_name, last_name, role, username, is_active, must_change_password, failed_attempts, locked_until, last_login_at, created_at FROM staff ORDER BY created_at DESC'
     );
     res.json({ staff: result.rows });
   } catch (error) { console.error(error); res.status(500).json({ error: error.message || 'Server error' }); }
 });
 
-app.post('/api/staff', async (req, res) => {
+app.post('/api/staff', requireAdmin, async (req, res) => {
   try {
-    const { firstName, lastName, role } = req.body;
+    const { firstName, lastName, role, username } = req.body;
     if (!firstName || !lastName) return res.status(400).json({ error: 'First and last name are required' });
+    const usernameError = validateUsername(username);
+    if (usernameError) return res.status(400).json({ error: usernameError });
+    const dupe = await pool.query('SELECT id FROM staff WHERE lower(username) = lower($1)', [username]);
+    if (dupe.rows.length > 0) return res.status(409).json({ error: 'That username is already taken' });
     const finalRole = role === 'ADMIN' ? 'ADMIN' : 'STAFF';
-    const pin = String(crypto.randomInt(1000, 9999));
-    const pinHash = await bcrypt.hash(pin, 10);
+    const initialPassword = generateTempPassword();
+    const passwordHash = await bcrypt.hash(initialPassword, 10);
     const result = await pool.query(
-      'INSERT INTO staff (first_name, last_name, role, pin_hash, must_change_pin) VALUES ($1,$2,$3,$4,true) RETURNING id, first_name, last_name, role, is_active, created_at',
-      [titleCase(firstName), titleCase(lastName), finalRole, pinHash]
+      'INSERT INTO staff (first_name, last_name, role, username, password_hash, must_change_password) VALUES ($1,$2,$3,$4,$5,true) RETURNING id, first_name, last_name, role, username, is_active, created_at',
+      [titleCase(firstName), titleCase(lastName), finalRole, username, passwordHash]
     );
-    await logActivity(req, 'CREATE', 'STAFF', result.rows[0].id, null, { firstName, lastName, role: finalRole });
-    res.status(201).json({ ...result.rows[0], temporaryPin: pin });
+    await logActivity(req, 'CREATE', 'STAFF', result.rows[0].id, null, { firstName, lastName, role: finalRole, username });
+    res.status(201).json({ ...result.rows[0], temporaryPassword: initialPassword });
   } catch (error) { console.error(error); res.status(500).json({ error: error.message || 'Server error' }); }
 });
 
-app.put('/api/staff/:id', async (req, res) => {
+app.put('/api/staff/:id', requireAdmin, async (req, res) => {
   try {
-    const { firstName, lastName, role, isActive } = req.body;
+    const { firstName, lastName, role, isActive, username } = req.body;
     const existing = await pool.query('SELECT * FROM staff WHERE id = $1', [req.params.id]);
     if (existing.rows.length === 0) return res.status(404).json({ error: 'Not found' });
+    if (username !== undefined) {
+      const usernameError = validateUsername(username);
+      if (usernameError) return res.status(400).json({ error: usernameError });
+      const dupe = await pool.query('SELECT id FROM staff WHERE lower(username) = lower($1) AND id != $2', [username, req.params.id]);
+      if (dupe.rows.length > 0) return res.status(409).json({ error: 'That username is already taken' });
+    }
     // Guard rail: never let the last active admin lock themselves (or every
     // admin) out of the system by demoting/deactivating the final admin.
     if ((role && role !== 'ADMIN') || isActive === false) {
@@ -624,28 +680,30 @@ app.put('/api/staff/:id', async (req, res) => {
       }
     }
     await pool.query(
-      'UPDATE staff SET first_name = COALESCE($1, first_name), last_name = COALESCE($2, last_name), role = COALESCE($3, role), is_active = COALESCE($4, is_active), updated_at = NOW() WHERE id = $5',
-      [firstName ? titleCase(firstName) : null, lastName ? titleCase(lastName) : null, role || null, isActive !== undefined ? isActive : null, req.params.id]
+      'UPDATE staff SET first_name = COALESCE($1, first_name), last_name = COALESCE($2, last_name), role = COALESCE($3, role), is_active = COALESCE($4, is_active), username = COALESCE($5, username), updated_at = NOW() WHERE id = $6',
+      [firstName ? titleCase(firstName) : null, lastName ? titleCase(lastName) : null, role || null, isActive !== undefined ? isActive : null, username || null, req.params.id]
     );
-    await logActivity(req, 'UPDATE', 'STAFF', req.params.id, null, { firstName, lastName, role, isActive });
+    await logActivity(req, 'UPDATE', 'STAFF', req.params.id, null, { firstName, lastName, role, isActive, username });
     res.json({ message: 'Updated' });
   } catch (error) { console.error(error); res.status(500).json({ error: error.message || 'Server error' }); }
 });
 
-app.post('/api/staff/:id/reset-pin', async (req, res) => {
+app.post('/api/staff/:id/reset-password', requireAdmin, async (req, res) => {
   try {
-    const pin = String(crypto.randomInt(1000, 9999));
-    const pinHash = await bcrypt.hash(pin, 10);
-    await pool.query('UPDATE staff SET pin_hash = $1, must_change_pin = true, failed_attempts = 0, locked_until = NULL WHERE id = $2', [pinHash, req.params.id]);
-    await logActivity(req, 'PIN_RESET', 'STAFF', req.params.id, null);
-    res.json({ temporaryPin: pin });
+    const tempPassword = generateTempPassword();
+    const passwordHash = await bcrypt.hash(tempPassword, 10);
+    await pool.query('UPDATE staff SET password_hash = $1, must_change_password = true, failed_attempts = 0, locked_until = NULL WHERE id = $2', [passwordHash, req.params.id]);
+    await logActivity(req, 'PASSWORD_RESET', 'STAFF', req.params.id, null);
+    res.json({ temporaryPassword: tempPassword });
   } catch (error) { console.error(error); res.status(500).json({ error: error.message || 'Server error' }); }
 });
 
-app.delete('/api/staff/:id', async (req, res) => {
+app.delete('/api/staff/:id', requireAdmin, async (req, res) => {
   try {
-    // req.staff only exists once real login (the `authenticate` middleware
-    // above) is switched back on — guard instead of assuming it's set.
+    // req.staff is always set here (the global `authenticate` middleware
+    // guarantees it) — this check just stops an admin deleting their own
+    // account, which the last-admin-standing guard below wouldn't catch
+    // if there happen to be other admins.
     if (req.staff && req.params.id === req.staff.id) return res.status(400).json({ error: 'You cannot remove your own account' });
     const existing = await pool.query('SELECT * FROM staff WHERE id = $1', [req.params.id]);
     if (existing.rows.length === 0) return res.status(404).json({ error: 'Not found' });
@@ -666,7 +724,7 @@ app.get('/api/settings/folder-format', async (req, res) => {
   } catch (error) { console.error(error); res.status(500).json({ error: error.message || 'Server error' }); }
 });
 
-app.put('/api/settings/folder-format', async (req, res) => {
+app.put('/api/settings/folder-format', requireAdmin, async (req, res) => {
   try {
     const { folderNumberFormat, includeYear, includeMonth, sequenceDigits } = req.body;
     await pool.query(

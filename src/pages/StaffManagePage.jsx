@@ -3,6 +3,7 @@ import { TopBar, BackButton, IconButton, Card, Chip, Avatar, Spinner, Alert, Emp
 import { useApiQuery } from '../hooks/useApiQuery';
 import { useNavigation } from '../context/NavigationContext';
 import { useSession } from '../context/SessionContext';
+import { validateUsername } from '../lib/validation';
 import { api } from '../lib/api';
 import { titleCase, formatDateTime } from '../lib/format';
 
@@ -10,7 +11,7 @@ const ROLE_OPTIONS = [{ value: 'STAFF', label: 'Staff' }, { value: 'ADMIN', labe
 const STATUS_OPTIONS = [{ value: 'true', label: 'Active' }, { value: 'false', label: 'Inactive' }];
 
 export function StaffManagePage() {
-  const { isAdmin } = useSession();
+  const { isAdmin, staff: me } = useSession();
   const { back } = useNavigation();
   const { data, loading, error, refetch } = useApiQuery('/staff');
   const [modal, setModal] = useState(null); // null | 'create' | staffObject (for edit)
@@ -31,7 +32,7 @@ export function StaffManagePage() {
         {loading && <Spinner label="Loading staff" />}
         {error && <Alert variant="error">{error}</Alert>}
         {data && data.staff.length === 0 && <EmptyState icon="group_off" title="No staff accounts yet" />}
-        {data?.staff.map((s) => <StaffRow key={s.id} staff={s} onEdit={() => setModal(s)} onChanged={refetch} />)}
+        {data?.staff.map((s) => <StaffRow key={s.id} staff={s} isSelf={s.id === me.id} onEdit={() => setModal(s)} onChanged={refetch} />)}
       </div>
 
       {modal === 'create' && <CreateStaffModal onClose={() => setModal(null)} onCreated={refetch} />}
@@ -40,14 +41,14 @@ export function StaffManagePage() {
   );
 }
 
-function StaffRow({ staff: s, onEdit, onChanged }) {
+function StaffRow({ staff: s, isSelf, onEdit, onChanged }) {
   const menu = useMenu();
   const locked = s.locked_until && new Date(s.locked_until) > new Date();
 
-  async function resetPin() {
-    if (!confirm('Generate a new temporary PIN for this account?')) return;
-    const d = await api.post(`/staff/${s.id}/reset-pin`, {});
-    alert(`New temporary PIN: ${d.temporaryPin}\n\nShare this with them directly — they'll set their own PIN once real sign-in is enabled.`);
+  async function resetPassword() {
+    if (!confirm(`Generate a new temporary password for ${titleCase(s.first_name)}?`)) return;
+    const d = await api.post(`/staff/${s.id}/reset-password`, {});
+    alert(`New temporary password: ${d.temporaryPassword}\n\nShare this with them directly — they'll be asked to set their own password on next sign-in.`);
     onChanged();
   }
   async function remove() {
@@ -55,31 +56,33 @@ function StaffRow({ staff: s, onEdit, onChanged }) {
     try { await api.delete(`/staff/${s.id}`); onChanged(); } catch (e) { alert(e.message); }
   }
 
+  const menuItems = [
+    { label: 'Edit details', icon: 'edit', onClick: onEdit },
+    { label: 'Reset password', icon: 'lock_reset', onClick: resetPassword },
+  ];
+  if (!isSelf) menuItems.push({ label: 'Remove account', icon: 'person_remove', danger: true, onClick: remove });
+
   return (
     <Card variant="elevated" style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
       <Avatar firstName={s.first_name} lastName={s.last_name} />
       <div style={{ flex: 1, minWidth: 0 }}>
-        <div className="patient-name">{titleCase(s.first_name)} {titleCase(s.last_name)}</div>
+        <div className="patient-name">
+          {titleCase(s.first_name)} {titleCase(s.last_name)}
+          {isSelf && <span style={{ color: 'var(--md-on-surface-variant)', fontWeight: 400 }}> (you)</span>}
+        </div>
+        <div style={{ fontSize: '.72rem', color: 'var(--md-on-surface-variant)' }}>@{s.username}</div>
         <div className="patient-meta" style={{ marginTop: 4 }}>
           <Chip variant={s.role === 'ADMIN' ? 'primary' : 'neutral'}>{s.role === 'ADMIN' ? 'Administrator' : 'Staff'}</Chip>
           {!s.is_active && <Chip variant="error">Inactive</Chip>}
           {locked && <Chip variant="error" className="pulse">Locked</Chip>}
-          {s.must_change_pin && <Chip variant="warning">PIN reset pending</Chip>}
+          {s.must_change_password && <Chip variant="warning">Password reset pending</Chip>}
         </div>
         <div style={{ fontSize: '.7rem', color: 'var(--md-on-surface-variant)', marginTop: 4 }}>
           Last sign-in: {s.last_login_at ? formatDateTime(s.last_login_at) : 'Never'}
         </div>
       </div>
       <IconButton icon="more_vert" label={`Actions for ${titleCase(s.first_name)}`} onClick={menu.openMenu} />
-      <Menu
-        anchorEl={menu.anchorEl}
-        onClose={menu.closeMenu}
-        items={[
-          { label: 'Edit details', icon: 'edit', onClick: onEdit },
-          { label: 'Reset PIN', icon: 'lock_reset', onClick: resetPin },
-          { label: 'Remove account', icon: 'person_remove', danger: true, onClick: remove },
-        ]}
-      />
+      <Menu anchorEl={menu.anchorEl} onClose={menu.closeMenu} items={menuItems} />
     </Card>
   );
 }
@@ -87,17 +90,20 @@ function StaffRow({ staff: s, onEdit, onChanged }) {
 function CreateStaffModal({ onClose, onCreated }) {
   const [firstName, setFirstName] = useState('');
   const [lastName, setLastName] = useState('');
+  const [username, setUsername] = useState('');
   const [role, setRole] = useState('STAFF');
   const [error, setError] = useState(null);
   const [saving, setSaving] = useState(false);
 
   async function submit() {
     if (!firstName.trim() || !lastName.trim()) { setError('First and last name are required'); return; }
+    const usernameError = validateUsername(username);
+    if (usernameError) { setError(usernameError); return; }
     setSaving(true); setError(null);
     try {
-      const d = await api.post('/staff', { firstName, lastName, role });
+      const d = await api.post('/staff', { firstName, lastName, username, role });
       onClose();
-      alert(`Account created for ${firstName} ${lastName}.\n\nTemporary PIN: ${d.temporaryPin}\n\nShare this PIN with them directly.`);
+      alert(`Account created for ${firstName} ${lastName} (@${username}).\n\nTemporary password: ${d.temporaryPassword}\n\nShare this with them directly.`);
       onCreated();
     } catch (e) { setError(e.message); } finally { setSaving(false); }
   }
@@ -107,6 +113,7 @@ function CreateStaffModal({ onClose, onCreated }) {
       <Alert variant="error">{error}</Alert>
       <TextField label="First Name" value={firstName} onChange={setFirstName} />
       <TextField label="Last Name" value={lastName} onChange={setLastName} />
+      <TextField label="Username" value={username} onChange={setUsername} helperText="Letters, numbers, dots, underscores, hyphens" />
       <Select label="Role" value={role} onChange={setRole} options={ROLE_OPTIONS} />
       <div style={{ display: 'flex', gap: 8, marginTop: 8 }}>
         <Button fullWidth loading={saving} onClick={submit}>Create Account</Button>
@@ -119,15 +126,18 @@ function CreateStaffModal({ onClose, onCreated }) {
 function EditStaffModal({ staff, onClose, onSaved }) {
   const [firstName, setFirstName] = useState(titleCase(staff.first_name));
   const [lastName, setLastName] = useState(titleCase(staff.last_name));
+  const [username, setUsername] = useState(staff.username || '');
   const [role, setRole] = useState(staff.role);
   const [isActive, setIsActive] = useState(String(staff.is_active));
   const [error, setError] = useState(null);
   const [saving, setSaving] = useState(false);
 
   async function submit() {
+    const usernameError = validateUsername(username);
+    if (usernameError) { setError(usernameError); return; }
     setSaving(true); setError(null);
     try {
-      await api.put(`/staff/${staff.id}`, { firstName, lastName, role, isActive: isActive === 'true' });
+      await api.put(`/staff/${staff.id}`, { firstName, lastName, username, role, isActive: isActive === 'true' });
       onClose(); onSaved();
     } catch (e) { setError(e.message); } finally { setSaving(false); }
   }
@@ -137,6 +147,7 @@ function EditStaffModal({ staff, onClose, onSaved }) {
       <Alert variant="error">{error}</Alert>
       <TextField label="First Name" value={firstName} onChange={setFirstName} />
       <TextField label="Last Name" value={lastName} onChange={setLastName} />
+      <TextField label="Username" value={username} onChange={setUsername} />
       <Select label="Role" value={role} onChange={setRole} options={ROLE_OPTIONS} />
       <Select label="Status" value={isActive} onChange={setIsActive} options={STATUS_OPTIONS} />
       <div style={{ display: 'flex', gap: 8, marginTop: 8 }}>
