@@ -12,3 +12,13 @@ createRoot(document.getElementById('root')).render(
     <App />
   </StrictMode>
 );
+
+// Registered after load so it never competes with the initial render for
+// bandwidth/CPU. Failure here (unsupported browser, blocked, etc.) is
+// silently non-fatal — the app works identically without a service
+// worker, it just loses the offline-shell/install-prompt benefits.
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('/sw.js').catch(() => {});
+  });
+}

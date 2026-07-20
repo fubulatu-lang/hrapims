@@ -27,16 +27,19 @@ export function formatNationalId(digits) {
  * @param {string} props.value - digits only (0-10 chars), NOT the formatted display string
  * @param {(digits: string) => void} props.onChange
  * @param {string} [props.excludeFolderNumber]
+ * @param {boolean} [props.required] - driven by admin-configured field settings, see usePatientFieldConfig
  *
  * @example <NationalIdField value={nationalId} onChange={setNationalId} excludeFolderNumber={folderNumber} />
  */
-export function NationalIdField({ value, onChange, excludeFolderNumber }) {
+export function NationalIdField({ value, onChange, excludeFolderNumber, required }) {
   const [duplicate, setDuplicate] = useState(null);
   const [checking, setChecking] = useState(false);
   const [touched, setTouched] = useState(false);
   const digits = (value || '').slice(0, 10);
   const isValid = digits.length === 10;
-  const error = touched && digits.length > 0 && digits.length < 10 ? 'National ID must be 10 digits (GHA-XXXXXXXXX-X)' : undefined;
+  const error = touched && digits.length > 0 && digits.length < 10
+    ? 'National ID must be 10 digits (GHA-XXXXXXXXX-X)'
+    : touched && required && digits.length === 0 ? 'National ID is required' : undefined;
 
   async function checkUnique(fullDigits) {
     setChecking(true);
@@ -69,6 +72,7 @@ export function NationalIdField({ value, onChange, excludeFolderNumber }) {
     <div>
       <TextField
         label="National ID"
+        required={required}
         value={formatNationalId(digits)}
         onChange={handleChange}
         onBlur={handleBlur}

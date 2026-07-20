@@ -1,4 +1,4 @@
-import { useId } from 'react';
+import { useId, useState } from 'react';
 import { Icon } from './Icon';
 
 /**
@@ -9,7 +9,8 @@ import { Icon } from './Icon';
  *
  * Accessibility: the input is linked to its label via `htmlFor`/`id`, and
  * to its error or helper text via `aria-describedby`; `aria-invalid` is
- * set whenever `error` is present.
+ * set whenever `error` is present. Password fields get a show/hide toggle
+ * automatically — no page needs to opt in or wire anything for it.
  *
  * @param {object} props
  * @param {string} props.label
@@ -34,6 +35,7 @@ import { Icon } from './Icon';
  *   onBlur={() => validate('firstName')}
  *   error={errors.firstName}
  * />
+ * @example <TextField label="Password" type="password" value={pw} onChange={setPw} />
  */
 export function TextField({
   label,
@@ -55,7 +57,15 @@ export function TextField({
   const errorId = `${fieldId}-error`;
   const helpId = `${fieldId}-help`;
   const describedBy = error ? errorId : helperText ? helpId : undefined;
-  const inputClasses = ['input', error ? 'md-error' : '', valid && !error ? 'valid' : ''].filter(Boolean).join(' ');
+  const isPassword = type === 'password';
+  const [revealed, setRevealed] = useState(false);
+  const effectiveType = isPassword && revealed ? 'text' : type;
+  const inputClasses = [
+    'input',
+    error ? 'md-error' : '',
+    valid && !error ? 'valid' : '',
+    isPassword ? 'has-toggle' : '',
+  ].filter(Boolean).join(' ');
 
   const sharedProps = {
     id: fieldId,
@@ -71,7 +81,18 @@ export function TextField({
   return (
     <div className={`field-group ${className}`}>
       <label className="label" htmlFor={fieldId}>{label}{required ? ' *' : ''}</label>
-      {multiline ? <textarea rows={rows} {...sharedProps} /> : <input type={type} {...sharedProps} />}
+      {multiline ? <textarea rows={rows} {...sharedProps} /> : <input type={effectiveType} {...sharedProps} />}
+      {isPassword && (
+        <button
+          type="button"
+          className="input-toggle"
+          onClick={() => setRevealed((r) => !r)}
+          aria-label={revealed ? 'Hide password' : 'Show password'}
+          tabIndex={-1}
+        >
+          <Icon name={revealed ? 'visibility_off' : 'visibility'} />
+        </button>
+      )}
       {valid && !error && <Icon name="check_circle" className="input-check" />}
       {error && (
         <div className="field-error" id={errorId} role="alert">

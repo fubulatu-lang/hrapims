@@ -14,10 +14,12 @@ import { titleCase } from '../../lib/format';
  * @param {string} props.value - digits only, up to 8 chars
  * @param {(digits: string) => void} props.onChange
  * @param {string} [props.excludeFolderNumber] - current patient's folder number, so editing your own record doesn't flag itself as a duplicate
+ * @param {boolean} [props.required] - driven by admin-configured field settings, see usePatientFieldConfig
+ * @param {string} [props.error]
  *
  * @example <InsuranceField value={insurance} onChange={setInsurance} excludeFolderNumber={folderNumber} />
  */
-export function InsuranceField({ value, onChange, excludeFolderNumber }) {
+export function InsuranceField({ value, onChange, excludeFolderNumber, required, error }) {
   const [duplicate, setDuplicate] = useState(null);
   const [checking, setChecking] = useState(false);
   const digits = (value || '').slice(0, 8);
@@ -53,13 +55,15 @@ export function InsuranceField({ value, onChange, excludeFolderNumber }) {
     <div>
       <TextField
         label="Insurance Number"
+        required={required}
         value={digits}
         onChange={handleChange}
         onBlur={handleBlur}
         valid={isValid && !duplicate}
+        error={error}
         placeholder="8-digit number"
         inputMode="numeric"
-        helperText={checking ? 'Checking…' : undefined}
+        helperText={!error && checking ? 'Checking…' : undefined}
       />
       {duplicate && (
         <Alert variant="warning">

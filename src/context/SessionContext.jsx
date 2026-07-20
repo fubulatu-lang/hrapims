@@ -69,6 +69,11 @@ export function SessionProvider({ children }) {
     isAdmin: session?.staff?.role === 'ADMIN',
     isAuthenticated: !!session,
     mustChangePassword: !!session?.staff?.mustChangePassword,
+    // Server-computed at login (role defaults + any per-staff overrides,
+    // see PERMISSION_DEFAULTS in server/src/index.js) — this is a UI
+    // convenience for showing/hiding actions, not the actual security
+    // boundary, which is re-checked server-side on every gated request.
+    can: (key) => !!session?.staff?.permissions?.[key],
     login,
     logout,
     clearMustChangePassword,
@@ -79,9 +84,10 @@ export function SessionProvider({ children }) {
 
 /**
  * @returns {{
- *   staff: {id:string, firstName:string, lastName:string, role:string, username:string}|null,
+ *   staff: {id:string, firstName:string, lastName:string, role:string, username:string, permissions:Object<string,boolean>}|null,
  *   role: 'STAFF'|'ADMIN'|null, isAdmin: boolean, isAuthenticated: boolean,
  *   mustChangePassword: boolean,
+ *   can: (permissionKey: string) => boolean,
  *   login: (username: string, password: string) => Promise<{mustChangePassword: boolean}>,
  *   logout: () => void,
  *   clearMustChangePassword: () => void,

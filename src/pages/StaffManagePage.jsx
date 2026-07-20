@@ -11,13 +11,13 @@ const ROLE_OPTIONS = [{ value: 'STAFF', label: 'Staff' }, { value: 'ADMIN', labe
 const STATUS_OPTIONS = [{ value: 'true', label: 'Active' }, { value: 'false', label: 'Inactive' }];
 
 export function StaffManagePage() {
-  const { isAdmin, staff: me } = useSession();
+  const { can, staff: me } = useSession();
   const { back } = useNavigation();
   const { data, loading, error, refetch } = useApiQuery('/staff');
   const [modal, setModal] = useState(null); // null | 'create' | staffObject (for edit)
 
-  if (!isAdmin) {
-    return (<><TopBar title="Staff Management" leading={<BackButton onClick={back} />} /><div className="main-content"><Alert variant="error">Administrator access required</Alert></div></>);
+  if (!can('manageStaff')) {
+    return (<><TopBar title="Staff Management" leading={<BackButton onClick={back} />} /><div className="main-content"><Alert variant="error">You do not have permission to manage staff accounts.</Alert></div></>);
   }
 
   return (
@@ -123,21 +123,48 @@ function CreateStaffModal({ onClose, onCreated }) {
   );
 }
 
+const PERMISSION_LABELS = {
+  mergePatients: 'Merge Patients',
+  restorePatients: 'Restore Deleted Patients',
+  hardDeletePatients: 'Permanently Delete Patients',
+  manageStaff: 'Manage Staff Accounts',
+  editFieldConfig: 'Edit Patient Field Settings',
+};
+
+function permStateFromList(list, key) {
+  if (!Array.isArray(list)) return 'default';
+  if (list.includes(key)) return 'allow';
+  if (list.includes(`no:${key}`)) return 'deny';
+  return 'default';
+}
+
 function EditStaffModal({ staff, onClose, onSaved }) {
   const [firstName, setFirstName] = useState(titleCase(staff.first_name));
   const [lastName, setLastName] = useState(titleCase(staff.last_name));
   const [username, setUsername] = useState(staff.username || '');
   const [role, setRole] = useState(staff.role);
   const [isActive, setIsActive] = useState(String(staff.is_active));
+  const [permOverrides, setPermOverrides] = useState(() => {
+    const init = {};
+    Object.keys(PERMISSION_LABELS).forEach((k) => { init[k] = permStateFromList(staff.permissions, k); });
+    return init;
+  });
   const [error, setError] = useState(null);
   const [saving, setSaving] = useState(false);
+
+  function setPerm(key, state) {
+    setPermOverrides((o) => ({ ...o, [key]: state }));
+  }
 
   async function submit() {
     const usernameError = validateUsername(username);
     if (usernameError) { setError(usernameError); return; }
     setSaving(true); setError(null);
+    const permissions = Object.entries(permOverrides).flatMap(([key, state]) =>
+      state === 'allow' ? [key] : state === 'deny' ? [`no:${key}`] : []
+    );
     try {
-      await api.put(`/staff/${staff.id}`, { firstName, lastName, username, role, isActive: isActive === 'true' });
+      await api.put(`/staff/${staff.id}`, { firstName, lastName, username, role, isActive: isActive === 'true', permissions });
       onClose(); onSaved();
     } catch (e) { setError(e.message); } finally { setSaving(false); }
   }
@@ -150,7 +177,30 @@ function EditStaffModal({ staff, onClose, onSaved }) {
       <TextField label="Username" value={username} onChange={setUsername} />
       <Select label="Role" value={role} onChange={setRole} options={ROLE_OPTIONS} />
       <Select label="Status" value={isActive} onChange={setIsActive} options={STATUS_OPTIONS} />
-      <div style={{ display: 'flex', gap: 8, marginTop: 8 }}>
+
+      <div style={{ marginTop: 10, marginBottom: 6 }}>
+        <div className="label">Permission Overrides</div>
+        <p style={{ fontSize: '.72rem', color: 'var(--md-on-surface-variant)', marginTop: -2, marginBottom: 8 }}>
+          "Default" follows their role's normal access. Only change these to grant or remove a specific capability for this person.
+        </p>
+      </div>
+      {Object.entries(PERMISSION_LABELS).map(([key, label]) => (
+        <div key={key} style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '6px 0', flexWrap: 'wrap' }}>
+          <span style={{ flex: 1, fontSize: '.8rem', minWidth: 140 }}>{label}</span>
+          {['default', 'allow', 'deny'].map((state) => (
+            <Button
+              key={state}
+              size="xs"
+              variant={permOverrides[key] === state ? 'tonal' : 'outlined'}
+              onClick={() => setPerm(key, state)}
+            >
+              {state === 'default' ? 'Default' : state === 'allow' ? 'Allow' : 'Deny'}
+            </Button>
+          ))}
+        </div>
+      ))}
+
+      <div style={{ display: 'flex', gap: 8, marginTop: 12 }}>
         <Button fullWidth loading={saving} onClick={submit}>Save Changes</Button>
         <Button variant="text" onClick={onClose}>Cancel</Button>
       </div>

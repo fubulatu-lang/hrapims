@@ -4,10 +4,10 @@ import { useSession } from '../context/SessionContext';
 import { useNavigation } from '../context/NavigationContext';
 import { titleCase } from '../lib/format';
 
-const APP_VERSION = '2.3.0';
+const APP_VERSION = '2.4.0';
 
 export function DashboardPage() {
-  const { staff, staffLabel, role, isAdmin } = useDisplaySession();
+  const { staff, staffLabel, role, isAdmin, can } = useDisplaySession();
   const { goTo, navigate } = useNavigation();
 
   const stats = useApiQuery('/patients/stats');
@@ -63,7 +63,7 @@ export function DashboardPage() {
           <QuickAction icon="search" label="Search Patients" onClick={() => goTo('search')} />
           <QuickAction icon="person_add" label="Add Patient" onClick={() => navigate('patientForm')} />
           <QuickAction icon="groups" label="Manage Patients" onClick={() => goTo('patientList')} />
-          {isAdmin && <QuickAction icon="manage_accounts" label="User Management" onClick={() => navigate('staffManage')} />}
+          {can('manageStaff') && <QuickAction icon="manage_accounts" label="User Management" onClick={() => navigate('staffManage')} />}
           <QuickAction icon="settings" label="Settings" onClick={() => goTo('settings')} />
           <QuickAction icon="bar_chart" label="Reports" disabled note="Coming soon" />
         </div>
@@ -108,7 +108,7 @@ function QuickAction({ icon, label, onClick, disabled, note }) {
 
 /** Small local helper so the JSX above stays readable. */
 function useDisplaySession() {
-  const { staff, role, isAdmin } = useSession();
+  const { staff, role, isAdmin, can } = useSession();
   const staffLabel = titleCase(staff.firstName);
-  return { staff, staffLabel, role, isAdmin };
+  return { staff, staffLabel, role, isAdmin, can };
 }

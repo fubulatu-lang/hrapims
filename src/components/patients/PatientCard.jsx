@@ -1,6 +1,7 @@
 import { Avatar } from '../ui/Avatar';
 import { Chip } from '../ui/Chip';
 import { Icon } from '../ui/Icon';
+import { useLongPress } from '../../hooks/useLongPress';
 import { titleCase, formatDate } from '../../lib/format';
 
 /**
@@ -10,15 +11,17 @@ import { titleCase, formatDate } from '../../lib/format';
  * @param {object} props
  * @param {object} props.patient - raw patient record from the API
  * @param {() => void} props.onClick
+ * @param {() => void} [props.onPreview] - long-press / right-click, shows a quick-glance sheet instead of navigating
  */
-export function PatientCard({ patient: p, onClick }) {
+export function PatientCard({ patient: p, onClick, onPreview }) {
   const firstName = titleCase(p.first_name);
   const lastName = titleCase(p.last_name);
   const idLabel = p.insurance_number ? 'Ins' : p.national_id_number ? 'NatID' : 'Non-Insured';
   const idValue = p.insurance_number || p.national_id_number || '—';
+  const longPress = useLongPress(() => onPreview?.(), { threshold: 450 });
 
   return (
-    <button className="card elevated patient-card" onClick={onClick}>
+    <button className="card elevated patient-card" onClick={onClick} {...(onPreview ? longPress : {})}>
       <Avatar firstName={firstName} lastName={lastName} />
       <div style={{ flex: 1, minWidth: 0 }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 6 }}>

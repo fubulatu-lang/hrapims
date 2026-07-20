@@ -32,8 +32,12 @@
   --md-outline: #8a9296; --md-outline-variant: #40484c;
   --focus-ring: 0 0 0 3px rgba(143,206,238,.35);
 }
-/* Midnight (AMOLED): same content colors as dark, backgrounds drop to
-   true black so contrast ratios don't regress — only surfaces change. */
+/* Midnight (AMOLED): background/surface drop to true black for the OLED
+   power-saving win, but every card tone above that gets a small, real
+   step up — box-shadows render as literally invisible against #000000,
+   so "elevated" cards (surface-container-lowest) can't also be pure
+   black or they'd have zero visible separation from the page. Borders
+   (outline-variant) get the same treatment for the same reason. */
 [data-theme="midnight"] {
   --md-primary: #8fceee; --md-on-primary: #003547; --md-primary-container: #004d66; --md-on-primary-container: #cbe6f6;
   --md-secondary: #b4cbd8; --md-on-secondary: #1f333c; --md-secondary-container: #364a53; --md-on-secondary-container: #d0e6f2;
@@ -43,9 +47,9 @@
   --md-warning: #f4c04a; --md-warning-container: #5a4300; --md-on-warning-container: #ffe8a6;
   --md-background: #000000; --md-on-background: #e0e3e5;
   --md-surface: #000000; --md-on-surface: #e0e3e5; --md-on-surface-variant: #c0c8cc;
-  --md-surface-container-lowest: #000000; --md-surface-container-low: #000000;
-  --md-surface-container: #050505; --md-surface-container-high: #0d0d0d; --md-surface-container-highest: #161616;
-  --md-outline: #8a9296; --md-outline-variant: #262626;
+  --md-surface-container-lowest: #0d0d0d; --md-surface-container-low: #141414;
+  --md-surface-container: #1a1a1a; --md-surface-container-high: #222222; --md-surface-container-highest: #2c2c2c;
+  --md-outline: #9aa2a6; --md-outline-variant: #3a3a3a;
   --focus-ring: 0 0 0 3px rgba(143,206,238,.35);
 }
 /* Slate: neutral graphite-blue, light background — a cooler, more
@@ -154,7 +158,11 @@ a{color:var(--md-primary)}
 [data-theme="dark"] .input.md-error,[data-theme="midnight"] .input.md-error{box-shadow:0 0 0 3px rgba(255,180,171,.16)}
 textarea.input{resize:vertical;border-radius:var(--shape-xs)}
 select.input{appearance:none;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%2340484c' stroke-width='2'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E");background-repeat:no-repeat;background-position:right 12px center;background-size:18px;padding-right:38px}
+.input.has-toggle{padding-right:44px}
 .input-check{position:absolute;right:12px;top:13px;color:var(--md-success);pointer-events:none}
+.input-toggle{position:absolute;right:6px;top:6px;width:32px;height:32px;border:none;background:transparent;border-radius:var(--shape-full);color:var(--md-on-surface-variant);display:flex;align-items:center;justify-content:center;cursor:pointer}
+.input-toggle:hover{background:var(--md-surface-container-highest)}
+.input-toggle .material-symbols-outlined{font-size:20px}
 .field-error{display:flex;align-items:center;gap:5px;color:var(--md-error);font-size:.74rem;margin-top:5px;font-weight:500;line-height:1.3}
 .field-error .material-symbols-outlined{font-size:15px}
 .field-help{font-size:.72rem;color:var(--md-on-surface-variant);margin-top:5px}
@@ -172,9 +180,9 @@ select.input{appearance:none;background-image:url("data:image/svg+xml,%3Csvg xml
 .chip-neutral{background:var(--md-surface-container-highest);color:var(--md-on-surface-variant)}
 
 /* ---- Patient / staff list cards ---- */
-.patient-card{cursor:pointer;transition:box-shadow .15s,transform .1s ease;display:flex;align-items:center;gap:14px;width:100%;text-align:left;border:none;font-family:var(--font)}
-.patient-card:hover{box-shadow:var(--e1)}
-.patient-card:active{transform:scale(.99)}
+.patient-card{cursor:pointer;transition:box-shadow .15s,transform .1s ease,background .15s;display:flex;align-items:center;gap:14px;width:100%;text-align:left;border:none;font-family:var(--font)}
+.patient-card:hover{box-shadow:var(--e1);background:var(--md-surface-container-low)}
+.patient-card:active{transform:scale(.99);background:var(--md-surface-container)}
 .patient-avatar{width:44px;height:44px;border-radius:var(--shape-full);background:var(--md-primary-container);color:var(--md-on-primary-container);display:flex;align-items:center;justify-content:center;font-weight:600;font-size:1rem;flex-shrink:0}
 .patient-avatar.lg{width:56px;height:56px;font-size:1.3rem}
 .patient-name{font-size:1rem;font-weight:600;letter-spacing:.01em;color:var(--md-on-surface)}
@@ -244,10 +252,11 @@ pre.json-view{font-size:.7rem;white-space:pre-wrap;max-height:200px;overflow-y:a
 
 /* ---- Quick Actions grid ---- */
 .quick-actions-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:12px}
-.quick-action{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px;padding:16px 8px;border-radius:var(--shape-lg);background:var(--md-surface-container-low);border:none;cursor:pointer;transition:box-shadow .15s,transform .1s ease;font-family:var(--font);text-align:center;position:relative}
-.quick-action:hover{box-shadow:var(--e1)}
-.quick-action:active{transform:scale(.96)}
+.quick-action{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px;padding:16px 8px;border-radius:var(--shape-lg);background:var(--md-surface-container-low);border:none;cursor:pointer;transition:box-shadow .15s,transform .1s ease,background .15s;font-family:var(--font);text-align:center;position:relative}
+.quick-action:hover{box-shadow:var(--e1);background:var(--md-surface-container-high)}
+.quick-action:active{transform:scale(.96);background:var(--md-surface-container-highest)}
 .quick-action:disabled{opacity:.5;cursor:default}
+.quick-action:disabled:hover{box-shadow:none;background:var(--md-surface-container-low)}
 .quick-action-icon{width:40px;height:40px;border-radius:var(--shape-full);background:var(--md-primary-container);color:var(--md-on-primary-container);display:flex;align-items:center;justify-content:center}
 .quick-action-label{font-size:.72rem;font-weight:600;color:var(--md-on-surface);line-height:1.2}
 .quick-action-note{font-size:.6rem;color:var(--md-on-surface-variant);text-transform:uppercase;letter-spacing:.04em}

@@ -7,7 +7,7 @@ const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 
 const APP_NAME = 'HRAPIMS';
-const APP_VERSION = '2.3.0';
+const APP_VERSION = '2.4.0';
 
 // In production set JWT_SECRET yourself (Vercel env var) so sessions survive
 // deploys/restarts. Falling back to a random secret is safe but means every
@@ -41,6 +41,19 @@ async function initDB() {
         include_month BOOLEAN DEFAULT false,
         sequence_digits INT DEFAULT 5,
         last_sequence_number INT DEFAULT 0
+      )
+    `);
+    // Admin-configurable "which optional fields appear on the patient
+    // form, and which of those are required" — see PATIENT_FIELD_REGISTRY
+    // below for the canonical list. Only rows an admin has actually
+    // changed from the default exist here; anything missing falls back to
+    // the registry's default (enabled, optional) at read time.
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS patient_field_config (
+        field_key TEXT PRIMARY KEY,
+        enabled BOOLEAN DEFAULT true,
+        required BOOLEAN DEFAULT false,
+        updated_at TIMESTAMP DEFAULT NOW()
       )
     `);
     await client.query(`
@@ -98,6 +111,10 @@ async function initDB() {
     await client.query(`ALTER TABLE staff ADD COLUMN IF NOT EXISTS username TEXT`);
     await client.query(`ALTER TABLE staff ADD COLUMN IF NOT EXISTS password_hash TEXT`);
     await client.query(`ALTER TABLE staff ADD COLUMN IF NOT EXISTS must_change_password BOOLEAN DEFAULT true`);
+    // Per-staff permission overrides, layered on top of role defaults —
+    // NULL/absent means "just use whatever the role normally gets." See
+    // PERMISSION_DEFAULTS below for the base role→permission mapping.
+    await client.query(`ALTER TABLE staff ADD COLUMN IF NOT EXISTS permissions TEXT[]`);
     await client.query(`CREATE UNIQUE INDEX IF NOT EXISTS staff_username_unique_idx ON staff (username) WHERE username IS NOT NULL`);
     await client.query(`
       CREATE TABLE IF NOT EXISTS activity_logs (
@@ -209,6 +226,70 @@ function generateTempPassword() {
   return pw;
 }
 
+// ============ CONFIGURABLE PATIENT FIELDS ============
+// First Name / Last Name / Gender / Location are always shown and always
+// required — they're the minimum needed to create a folder at all, not
+// something an admin can turn off. Everything else here is optional by
+// nature and can be hidden or made mandatory per-facility. Adding a new
+// configurable field later is one entry here, matched by `key` on the
+// client (src/lib/patientFields.js has the identical list, kept in sync
+// by hand — see that file's docstring).
+const PATIENT_FIELD_REGISTRY = [
+  { key: 'dobAge', label: 'Date of Birth / Age', section: 'Personal Information', defaultEnabled: true, defaultRequired: false },
+  { key: 'phone', label: 'Phone', section: 'Personal Information', defaultEnabled: true, defaultRequired: false },
+  { key: 'nationalId', label: 'National ID', section: 'Identification', defaultEnabled: true, defaultRequired: false },
+  { key: 'insurance', label: 'Insurance Number', section: 'Identification', defaultEnabled: true, defaultRequired: false },
+  { key: 'height', label: 'Height', section: 'Physical', defaultEnabled: true, defaultRequired: false },
+  { key: 'weight', label: 'Weight', section: 'Physical', defaultEnabled: true, defaultRequired: false },
+  { key: 'nextOfKinName', label: 'Next of Kin Name', section: 'Next of Kin', defaultEnabled: true, defaultRequired: false },
+  { key: 'nextOfKinContact', label: 'Next of Kin Contact', section: 'Next of Kin', defaultEnabled: true, defaultRequired: false },
+  { key: 'allergies', label: 'Allergies', section: 'Medical', defaultEnabled: true, defaultRequired: false },
+  { key: 'chronicConditions', label: 'Chronic Conditions', section: 'Medical', defaultEnabled: true, defaultRequired: false },
+];
+
+// Merges the registry's defaults with whatever an admin has actually
+// overridden in the DB, so a fresh install (empty table) still returns a
+// complete, correct config instead of nothing.
+async function getPatientFieldConfig() {
+  const result = await pool.query('SELECT field_key, enabled, required FROM patient_field_config');
+  const overrides = new Map(result.rows.map((r) => [r.field_key, r]));
+  return PATIENT_FIELD_REGISTRY.map((f) => {
+    const o = overrides.get(f.key);
+    return {
+      key: f.key,
+      label: f.label,
+      section: f.section,
+      enabled: o ? o.enabled : f.defaultEnabled,
+      required: o ? o.required : f.defaultRequired,
+    };
+  });
+}
+
+// Maps each configurable field to how it shows up in a patient
+// create/update payload, so the enforcement loop below stays a one-liner
+// per field instead of a hand-written if/else chain.
+const PATIENT_FIELD_PRESENCE_CHECK = {
+  dobAge: (d) => !!(d.dateOfBirth || d.age),
+  phone: (d) => !!d.phoneNumber,
+  nationalId: (d) => !!d.nationalIdNumber,
+  insurance: (d) => !!d.insuranceNumber,
+  height: (d) => d.height != null && d.height !== '',
+  weight: (d) => d.weight != null && d.weight !== '',
+  nextOfKinName: (d) => !!d.nextOfKinName,
+  nextOfKinContact: (d) => !!d.nextOfKinContact,
+  allergies: (d) => !!d.allergies,
+  chronicConditions: (d) => !!d.chronicConditions,
+};
+/** @returns {string|null} an error message, or null if every required-and-enabled field is present */
+function findMissingRequiredField(payload, fieldConfig) {
+  for (const f of fieldConfig) {
+    if (f.enabled && f.required && !PATIENT_FIELD_PRESENCE_CHECK[f.key](payload)) {
+      return `${f.label} is required`;
+    }
+  }
+  return null;
+}
+
 function calculateAge(dob) {
   const today = new Date();
   let age = today.getFullYear() - dob.getFullYear();
@@ -285,12 +366,88 @@ function requireAdmin(req, res, next) {
   next();
 }
 
+// ============ PERMISSIONS (RBAC layer on top of role) ============
+// Role (STAFF/ADMIN) is still the primary gate for most of the app. This
+// exists for the handful of actions worth letting an admin fine-tune
+// per-person without waiting on a full permissions-matrix rebuild later
+// — e.g. granting one trusted staff member merge/restore rights, or
+// pulling merge access back from everyone if that default changes.
+// `permissions` on a staff row is an *override list*; anything not
+// explicitly listed there falls back to its role default below.
+const PERMISSION_DEFAULTS = {
+  mergePatients: () => true, // both roles, matches the earlier explicit "staff can merge" decision
+  restorePatients: (role) => role === 'ADMIN',
+  hardDeletePatients: (role) => role === 'ADMIN',
+  manageStaff: (role) => role === 'ADMIN',
+  editFieldConfig: (role) => role === 'ADMIN',
+};
+function hasPermission(staffRow, key) {
+  if (Array.isArray(staffRow.permissions) && staffRow.permissions.includes(key)) return true;
+  if (Array.isArray(staffRow.permissions) && staffRow.permissions.includes(`no:${key}`)) return false;
+  return PERMISSION_DEFAULTS[key] ? PERMISSION_DEFAULTS[key](staffRow.role) : false;
+}
+// Sent to the client on login/me so the UI can show/hide actions to match
+// what the server will actually allow — computed fresh from role +
+// overrides rather than trusting anything client-supplied.
+function computePermissionSet(staffRow) {
+  const out = {};
+  for (const key of Object.keys(PERMISSION_DEFAULTS)) out[key] = hasPermission(staffRow, key);
+  return out;
+}
+// Middleware factory — looks up the current staff row fresh (not just the
+// JWT payload) so a permission change takes effect immediately rather
+// than waiting for the person's session to expire and get re-issued.
+function requirePermission(key) {
+  return async (req, res, next) => {
+    try {
+      if (!req.staff) return res.status(401).json({ error: 'Sign in required' });
+      const result = await pool.query('SELECT role, permissions FROM staff WHERE id = $1', [req.staff.id]);
+      const row = result.rows[0];
+      if (!row || !hasPermission(row, key)) return res.status(403).json({ error: 'You do not have permission to do that' });
+      next();
+    } catch (error) { console.error(error); res.status(500).json({ error: error.message || 'Server error' }); }
+  };
+}
+
 // ============ ROUTES ============
 
 app.get('/', (req, res) => { res.sendFile(path.join(__dirname, '..', '..', 'dist', 'index.html')); });
 app.get('/api/health', (req, res) => { res.json({ status: 'ok', app: APP_NAME, version: APP_VERSION }); });
 
 // ---- Public auth routes (no session required yet) ----
+
+// One-time emergency recovery: resets (or creates) the 'admin' account,
+// gated by a secret env var instead of a session, since the whole point
+// is you're locked out and have no session. DISABLED unless RECOVERY_KEY
+// is set — set it in Vercel, use this once, then delete the env var and
+// redeploy. Left in as a GET so it's usable straight from a mobile
+// browser address bar; that's a deliberate security/convenience
+// trade-off for a temporary recovery tool, not something to leave on.
+app.get('/api/auth/recover-admin', async (req, res) => {
+  try {
+    if (!process.env.RECOVERY_KEY) {
+      return res.status(503).json({ error: 'Recovery is disabled. Set RECOVERY_KEY in your environment variables and redeploy first.' });
+    }
+    if (!req.query.secret || req.query.secret !== process.env.RECOVERY_KEY) {
+      return res.status(403).json({ error: 'Invalid or missing recovery key' });
+    }
+    const newPassword = req.query.password;
+    const policyError = validatePassword(newPassword);
+    if (policyError) return res.status(400).json({ error: policyError });
+    const passwordHash = await bcrypt.hash(newPassword, 10);
+    const result = await pool.query(
+      "UPDATE staff SET password_hash = $1, must_change_password = false, failed_attempts = 0, locked_until = NULL, is_active = true WHERE lower(username) = 'admin' RETURNING id, username",
+      [passwordHash]
+    );
+    if (result.rows.length === 0) {
+      await pool.query(
+        "INSERT INTO staff (first_name, last_name, role, username, password_hash, must_change_password) VALUES ('System', 'Administrator', 'ADMIN', 'admin', $1, false)",
+        [passwordHash]
+      );
+    }
+    res.json({ message: "Done. Sign in with username 'admin' and the password you just set. Now remove RECOVERY_KEY from your environment variables and redeploy." });
+  } catch (error) { console.error(error); res.status(500).json({ error: error.message || 'Server error' }); }
+});
 
 app.post('/api/auth/login', async (req, res) => {
   try {
@@ -318,6 +475,7 @@ app.post('/api/auth/login', async (req, res) => {
       staff: {
         id: staff.id, firstName: staff.first_name, lastName: staff.last_name, role: staff.role,
         username: staff.username, mustChangePassword: staff.must_change_password,
+        permissions: computePermissionSet(staff),
       },
     });
   } catch (error) { console.error(error); res.status(500).json({ error: error.message || 'Server error' }); }
@@ -329,10 +487,13 @@ app.post('/api/auth/login', async (req, res) => {
 app.use('/api', authenticate);
 app.get('/api/auth/me', async (req, res) => {
   try {
-    const result = await pool.query('SELECT id, first_name, last_name, role, username, must_change_password FROM staff WHERE id = $1', [req.staff.id]);
+    const result = await pool.query('SELECT id, first_name, last_name, role, username, must_change_password, permissions FROM staff WHERE id = $1', [req.staff.id]);
     if (result.rows.length === 0) return res.status(404).json({ error: 'Not found' });
     const s = result.rows[0];
-    res.json({ id: s.id, firstName: s.first_name, lastName: s.last_name, role: s.role, username: s.username, mustChangePassword: s.must_change_password });
+    res.json({
+      id: s.id, firstName: s.first_name, lastName: s.last_name, role: s.role, username: s.username,
+      mustChangePassword: s.must_change_password, permissions: computePermissionSet(s),
+    });
   } catch (error) { console.error(error); res.status(500).json({ error: error.message || 'Server error' }); }
 });
 
@@ -455,6 +616,9 @@ app.post('/api/patients', async (req, res) => {
     if (!d.firstName || !d.lastName || !d.gender || !d.location) {
       return res.status(400).json({ error: 'First name, last name, gender, and location are required' });
     }
+    const fieldConfig = await getPatientFieldConfig();
+    const missingField = findMissingRequiredField(d, fieldConfig);
+    if (missingField) return res.status(400).json({ error: missingField });
     if (d.insuranceNumber && !/^\d{1,8}$/.test(d.insuranceNumber)) {
       return res.status(400).json({ error: 'Insurance number must be up to 8 digits' });
     }
@@ -510,6 +674,25 @@ app.put('/api/patients/:folderNumber', async (req, res) => {
     if (d.version && d.version !== e.version) {
       return res.status(409).json({ error: 'Record was updated by someone else. Please refresh and try again.' });
     }
+    // Check required-and-enabled fields against the *merged* result (an
+    // update that doesn't touch a field shouldn't fail just because that
+    // field wasn't in this particular request body).
+    const merged = {
+      dateOfBirth: d.dateOfBirth !== undefined ? d.dateOfBirth : e.date_of_birth,
+      age: d.age !== undefined ? d.age : e.age,
+      phoneNumber: d.phoneNumber !== undefined ? d.phoneNumber : e.phone_number,
+      nationalIdNumber: d.nationalIdNumber !== undefined ? d.nationalIdNumber : e.national_id_number,
+      insuranceNumber: d.insuranceNumber !== undefined ? d.insuranceNumber : e.insurance_number,
+      height: d.height !== undefined ? d.height : e.height,
+      weight: d.weight !== undefined ? d.weight : e.weight,
+      nextOfKinName: d.nextOfKinName !== undefined ? d.nextOfKinName : e.next_of_kin_name,
+      nextOfKinContact: d.nextOfKinContact !== undefined ? d.nextOfKinContact : e.next_of_kin_contact,
+      allergies: d.allergies !== undefined ? d.allergies : e.allergies,
+      chronicConditions: d.chronicConditions !== undefined ? d.chronicConditions : e.chronic_conditions,
+    };
+    const fieldConfig = await getPatientFieldConfig();
+    const missingField = findMissingRequiredField(merged, fieldConfig);
+    if (missingField) return res.status(400).json({ error: missingField });
     if (d.insuranceNumber && !/^\d{1,8}$/.test(d.insuranceNumber)) {
       return res.status(400).json({ error: 'Insurance number must be up to 8 digits' });
     }
@@ -563,7 +746,7 @@ app.delete('/api/patients/:folderNumber', async (req, res) => {
   } catch (error) { console.error(error); res.status(500).json({ error: error.message || 'Server error' }); }
 });
 
-app.post('/api/patients/:folderNumber/restore', requireAdmin, async (req, res) => {
+app.post('/api/patients/:folderNumber/restore', requirePermission('restorePatients'), async (req, res) => {
   try {
     await pool.query('UPDATE patients SET is_deleted = false, deleted_at = NULL WHERE folder_number = $1', [req.params.folderNumber]);
     await logActivity(req, 'RESTORE', 'PATIENT', req.params.folderNumber, req.params.folderNumber);
@@ -571,7 +754,7 @@ app.post('/api/patients/:folderNumber/restore', requireAdmin, async (req, res) =
   } catch (error) { console.error(error); res.status(500).json({ error: error.message || 'Server error' }); }
 });
 
-app.delete('/api/patients/:folderNumber/permanent', requireAdmin, async (req, res) => {
+app.delete('/api/patients/:folderNumber/permanent', requirePermission('hardDeletePatients'), async (req, res) => {
   try {
     if (req.body.confirmation !== 'DELETE') return res.status(400).json({ error: 'Type DELETE to confirm' });
     await pool.query('UPDATE patients SET is_hard_deleted = true, hard_deleted_at = NOW(), is_deleted = false, deleted_at = NULL WHERE folder_number = $1', [req.params.folderNumber]);
@@ -580,7 +763,7 @@ app.delete('/api/patients/:folderNumber/permanent', requireAdmin, async (req, re
   } catch (error) { console.error(error); res.status(500).json({ error: error.message || 'Server error' }); }
 });
 
-app.post('/api/patients/merge', async (req, res) => {
+app.post('/api/patients/merge', requirePermission('mergePatients'), async (req, res) => {
   try {
     const { targetFolderNumber, sourceFolderNumber, confirmation } = req.body;
     if (confirmation !== 'MERGE') return res.status(400).json({ error: 'Type MERGE to confirm' });
@@ -631,16 +814,16 @@ app.get('/api/activity/filters', async (req, res) => {
 
 // ---- Staff management (admin only) ----
 
-app.get('/api/staff', requireAdmin, async (req, res) => {
+app.get('/api/staff', requirePermission('manageStaff'), async (req, res) => {
   try {
     const result = await pool.query(
-      'SELECT id, first_name, last_name, role, username, is_active, must_change_password, failed_attempts, locked_until, last_login_at, created_at FROM staff ORDER BY created_at DESC'
+      'SELECT id, first_name, last_name, role, username, is_active, must_change_password, failed_attempts, locked_until, last_login_at, created_at, permissions FROM staff ORDER BY created_at DESC'
     );
     res.json({ staff: result.rows });
   } catch (error) { console.error(error); res.status(500).json({ error: error.message || 'Server error' }); }
 });
 
-app.post('/api/staff', requireAdmin, async (req, res) => {
+app.post('/api/staff', requirePermission('manageStaff'), async (req, res) => {
   try {
     const { firstName, lastName, role, username } = req.body;
     if (!firstName || !lastName) return res.status(400).json({ error: 'First and last name are required' });
@@ -660,9 +843,9 @@ app.post('/api/staff', requireAdmin, async (req, res) => {
   } catch (error) { console.error(error); res.status(500).json({ error: error.message || 'Server error' }); }
 });
 
-app.put('/api/staff/:id', requireAdmin, async (req, res) => {
+app.put('/api/staff/:id', requirePermission('manageStaff'), async (req, res) => {
   try {
-    const { firstName, lastName, role, isActive, username } = req.body;
+    const { firstName, lastName, role, isActive, username, permissions } = req.body;
     const existing = await pool.query('SELECT * FROM staff WHERE id = $1', [req.params.id]);
     if (existing.rows.length === 0) return res.status(404).json({ error: 'Not found' });
     if (username !== undefined) {
@@ -670,6 +853,11 @@ app.put('/api/staff/:id', requireAdmin, async (req, res) => {
       if (usernameError) return res.status(400).json({ error: usernameError });
       const dupe = await pool.query('SELECT id FROM staff WHERE lower(username) = lower($1) AND id != $2', [username, req.params.id]);
       if (dupe.rows.length > 0) return res.status(409).json({ error: 'That username is already taken' });
+    }
+    if (permissions !== undefined && permissions !== null) {
+      const validKeys = new Set(Object.keys(PERMISSION_DEFAULTS));
+      const invalid = permissions.filter((p) => !validKeys.has(p.replace(/^no:/, '')));
+      if (invalid.length > 0) return res.status(400).json({ error: `Unknown permission: ${invalid[0]}` });
     }
     // Guard rail: never let the last active admin lock themselves (or every
     // admin) out of the system by demoting/deactivating the final admin.
@@ -680,15 +868,15 @@ app.put('/api/staff/:id', requireAdmin, async (req, res) => {
       }
     }
     await pool.query(
-      'UPDATE staff SET first_name = COALESCE($1, first_name), last_name = COALESCE($2, last_name), role = COALESCE($3, role), is_active = COALESCE($4, is_active), username = COALESCE($5, username), updated_at = NOW() WHERE id = $6',
-      [firstName ? titleCase(firstName) : null, lastName ? titleCase(lastName) : null, role || null, isActive !== undefined ? isActive : null, username || null, req.params.id]
+      'UPDATE staff SET first_name = COALESCE($1, first_name), last_name = COALESCE($2, last_name), role = COALESCE($3, role), is_active = COALESCE($4, is_active), username = COALESCE($5, username), permissions = COALESCE($6, permissions), updated_at = NOW() WHERE id = $7',
+      [firstName ? titleCase(firstName) : null, lastName ? titleCase(lastName) : null, role || null, isActive !== undefined ? isActive : null, username || null, permissions !== undefined ? permissions : null, req.params.id]
     );
-    await logActivity(req, 'UPDATE', 'STAFF', req.params.id, null, { firstName, lastName, role, isActive, username });
+    await logActivity(req, 'UPDATE', 'STAFF', req.params.id, null, { firstName, lastName, role, isActive, username, permissions });
     res.json({ message: 'Updated' });
   } catch (error) { console.error(error); res.status(500).json({ error: error.message || 'Server error' }); }
 });
 
-app.post('/api/staff/:id/reset-password', requireAdmin, async (req, res) => {
+app.post('/api/staff/:id/reset-password', requirePermission('manageStaff'), async (req, res) => {
   try {
     const tempPassword = generateTempPassword();
     const passwordHash = await bcrypt.hash(tempPassword, 10);
@@ -698,7 +886,7 @@ app.post('/api/staff/:id/reset-password', requireAdmin, async (req, res) => {
   } catch (error) { console.error(error); res.status(500).json({ error: error.message || 'Server error' }); }
 });
 
-app.delete('/api/staff/:id', requireAdmin, async (req, res) => {
+app.delete('/api/staff/:id', requirePermission('manageStaff'), async (req, res) => {
   try {
     // req.staff is always set here (the global `authenticate` middleware
     // guarantees it) — this check just stops an admin deleting their own
@@ -733,6 +921,32 @@ app.put('/api/settings/folder-format', requireAdmin, async (req, res) => {
     );
     const result = await pool.query("SELECT * FROM system_settings WHERE id = 'main'");
     res.json(result.rows[0]);
+  } catch (error) { console.error(error); res.status(500).json({ error: error.message || 'Server error' }); }
+});
+
+// Any signed-in staff can read the config (they need it to render the
+// patient form correctly); only admins can change it.
+app.get('/api/settings/patient-fields', async (req, res) => {
+  try {
+    res.json({ fields: await getPatientFieldConfig() });
+  } catch (error) { console.error(error); res.status(500).json({ error: error.message || 'Server error' }); }
+});
+
+app.put('/api/settings/patient-fields', requirePermission('editFieldConfig'), async (req, res) => {
+  try {
+    const { fields } = req.body;
+    if (!Array.isArray(fields)) return res.status(400).json({ error: 'fields must be an array' });
+    const validKeys = new Set(PATIENT_FIELD_REGISTRY.map((f) => f.key));
+    for (const f of fields) {
+      if (!validKeys.has(f.key)) continue; // ignore unknown keys rather than erroring the whole batch
+      await pool.query(
+        `INSERT INTO patient_field_config (field_key, enabled, required, updated_at) VALUES ($1, $2, $3, NOW())
+         ON CONFLICT (field_key) DO UPDATE SET enabled = $2, required = $3, updated_at = NOW()`,
+        [f.key, !!f.enabled, !!f.enabled && !!f.required]
+      );
+    }
+    await logActivity(req, 'UPDATE', 'PATIENT_FIELD_CONFIG', null, null, { fields });
+    res.json({ fields: await getPatientFieldConfig() });
   } catch (error) { console.error(error); res.status(500).json({ error: error.message || 'Server error' }); }
 });
 

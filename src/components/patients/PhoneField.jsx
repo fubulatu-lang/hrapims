@@ -19,7 +19,9 @@ export function PhoneField({ label, value, onChange, required }) {
   const [touched, setTouched] = useState(false);
   const digits = (value || '').replace(/\D/g, '');
   const isValid = digits.length === 10 && digits.startsWith('0');
-  const error = touched && value && !isValid ? 'Enter a 10-digit number starting with 0' : undefined;
+  const error = touched && value && !isValid
+    ? 'Enter a 10-digit number starting with 0'
+    : touched && required && !value ? `${label} is required` : undefined;
 
   return (
     <TextField

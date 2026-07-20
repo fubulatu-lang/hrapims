@@ -1,8 +1,82 @@
-# HRAPIMS v2.3.0
+# HRAPIMS v2.4.0
 
 Hospital Records And Patient Information Management System.
 
-## v2.3.0 — real authentication (Priority 3 + 4)
+## v2.4.0 — the rest of the feature list
+
+### Two quick fixes first
+- **Password fields now have a show/hide toggle** (the eye icon) — built
+  into `TextField` itself, so every password field in the app (login,
+  forced change, Settings, Staff Management) gets it automatically with
+  no per-page wiring.
+- **Midnight (AMOLED) mode's missing borders, fixed.** The real bug: card
+  backgrounds were set to pure `#000000` — identical to the page
+  background — so "elevated" cards had zero visible separation, and
+  box-shadows are invisible against true black regardless. Cards and
+  borders now sit a few steps above pure black (`#0d0d0d` → `#2c2c2c`
+  ladder) while the page background stays true black for the actual
+  AMOLED power-saving benefit.
+
+### Configurable Patient Registration Fields
+Settings → Patient Registration Fields (admin only): toggle any optional
+field (Phone, DOB/Age, National ID, Insurance, Height, Weight, Next of
+Kin, Allergies, Chronic Conditions) shown/hidden and required/optional.
+First Name, Last Name, Gender, and Location are always shown and always
+required — not configurable, since they're the minimum needed to create
+a record at all. The New Patient form renders and validates against
+this config live; the Patient Detail page hides a field only if it's
+*both* disabled *and* empty — disabling a field going forward never
+hides data already recorded on existing patients.
+
+### Patient Merge, redesigned
+No more blind merging. Settings → Merge Patients now looks up both
+records first and shows a real side-by-side comparison — conflicting
+fields (both records have different values) flagged one color, fields
+the source would newly contribute flagged another — before you confirm
+anything.
+
+### Long-press patient preview
+Press and hold (or right-click on desktop) any patient in the list or
+search results for a quick-glance sheet — photo-free summary, Copy ID,
+and shortcuts to the full record or edit — without leaving the list.
+Regular taps still go straight to the full record as before.
+
+### Progressive Web App
+Installable now: manifest, real icons, and a minimal hand-written
+service worker (no new build dependency). App-shell/static assets cache
+for fast reloads and basic offline resilience; **API calls are never
+cached** — serving stale patient data offline would be actively wrong
+for a hospital system, not just an inconvenience. Settings → Install App
+handles the Chrome/Android install prompt and gives iOS users the manual
+"Add to Home Screen" instructions Safari requires.
+
+### Real permissions (RBAC), not just role
+Beyond Staff/Admin, an admin can now grant or revoke specific
+capabilities per person from Staff Management → Edit → Permission
+Overrides: Merge Patients, Restore Deleted Patients, Permanently Delete
+Patients, Manage Staff Accounts, Edit Patient Field Settings. Each
+defaults to following the person's role (unchanged behavior if you never
+touch this), and overrides are enforced server-side on every request,
+not just hidden in the UI — the relevant buttons/menus/nav items check
+the same permission the server checks.
+
+### Material 3 motion polish
+Quick Action tiles and patient list cards now get a proper state-layer
+background tint on hover/press, not just a shadow change — brings them
+in line with the buttons/nav items that already had this from earlier
+passes.
+
+### What's still not done
+**Feature-based folder restructuring** (`src/features/...`) — still
+recommending against this for now; the flat `pages/`/`components/`
+layout remains easy to navigate at this app's size. Worth reconsidering
+if the app grows substantially.
+
+---
+
+## Everything below is unchanged from v2.3.0
+
+
 
 The pseudo-login (tap Staff/Administrator, no credentials) is gone.
 Replaced with real username/password accounts, admin-provisioned only.

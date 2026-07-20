@@ -1,5 +1,6 @@
 import { TopBar, BackButton, IconButton, Card, Chip, Avatar, Spinner, Alert, Menu, useMenu } from '../components/ui';
 import { useApiQuery } from '../hooks/useApiQuery';
+import { usePatientFieldConfig } from '../hooks/usePatientFieldConfig';
 import { useNavigation } from '../context/NavigationContext';
 import { useSession } from '../context/SessionContext';
 import { api } from '../lib/api';
@@ -7,9 +8,10 @@ import { titleCase, formatDate } from '../lib/format';
 
 export function PatientDetailPage() {
   const { params, navigate, goTo, back } = useNavigation();
-  const { isAdmin } = useSession();
+  const { can } = useSession();
   const menu = useMenu();
   const { data: p, loading, error, refetch } = useApiQuery(`/patients/${params.folderNumber}`);
+  const fields = usePatientFieldConfig();
 
   if (loading) return (<><TopBar title="Patient Record" leading={<BackButton onClick={back} />} /><Spinner label="Loading patient" /></>);
   if (error) return (<><TopBar title="Patient Record" leading={<BackButton onClick={back} />} /><div className="main-content"><Alert variant="error">{error}</Alert></div></>);
@@ -17,6 +19,16 @@ export function PatientDetailPage() {
   const firstName = titleCase(p.first_name), lastName = titleCase(p.last_name);
   const idLabel = p.insurance_number ? 'Insurance' : p.national_id_number ? 'National ID' : 'Non-Insured';
   const idValue = p.insurance_number || p.national_id_number || '—';
+
+  // A field appearing on the detail page is "enabled in config, OR the
+  // record actually has data in it" — an admin disabling a field going
+  // forward should never make previously-recorded information disappear.
+  const showPhone = fields.isEnabled('phone') || !!p.phone_number;
+  const showDobAge = fields.isEnabled('dobAge') || !!p.date_of_birth || p.age != null;
+  const showIdentification = fields.isEnabled('nationalId') || fields.isEnabled('insurance') || !!p.national_id_number || !!p.insurance_number;
+  const showPhysical = fields.isEnabled('height') || fields.isEnabled('weight') || !!p.height || !!p.weight;
+  const showNextOfKin = fields.isEnabled('nextOfKinName') || fields.isEnabled('nextOfKinContact') || !!p.next_of_kin_name || !!p.next_of_kin_contact;
+  const showMedical = fields.isEnabled('allergies') || fields.isEnabled('chronicConditions') || !!p.allergies || !!p.chronic_conditions;
 
   async function handleSoftDelete() {
     if (!confirm('Soft delete this patient? It can be restored later.')) return;
@@ -40,12 +52,10 @@ export function PatientDetailPage() {
         { label: 'Edit record', icon: 'edit', onClick: () => navigate('patientForm', { folderNumber: p.folder_number }) },
         { label: 'Delete record', icon: 'delete', danger: true, onClick: handleSoftDelete },
       ]
-    : isAdmin
-    ? [
-        { label: 'Restore record', icon: 'restore_page', onClick: handleRestore },
-        { label: 'Delete forever', icon: 'delete_forever', danger: true, onClick: handleHardDelete },
-      ]
-    : [];
+    : [
+        ...(can('restorePatients') ? [{ label: 'Restore record', icon: 'restore_page', onClick: handleRestore }] : []),
+        ...(can('hardDeletePatients') ? [{ label: 'Delete forever', icon: 'delete_forever', danger: true, onClick: handleHardDelete }] : []),
+      ];
 
   return (
     <>
@@ -69,25 +79,33 @@ export function PatientDetailPage() {
           </div>
         </Card>
 
-        {p.is_deleted && !isAdmin && (
+        {p.is_deleted && !can('restorePatients') && (
           <Alert variant="info">Deleted records can only be restored by an administrator.</Alert>
         )}
 
         <div className="section-header">Personal Information</div>
         <Card>
           <div className="grid2">
-            <Field label="Date of Birth" value={p.date_of_birth ? `${formatDate(p.date_of_birth)}${p.is_age_estimated ? ' (Est.)' : ''}` : '—'} />
-            <Field label="Age" value={p.age ?? '—'} />
+            {showDobAge && (
+              <>
+                <Field label="Date of Birth" value={p.date_of_birth ? `${formatDate(p.date_of_birth)}${p.is_age_estimated ? ' (Est.)' : ''}` : '—'} />
+                <Field label="Age" value={p.age ?? '—'} />
+              </>
+            )}
             <Field label="Gender" value={p.gender} />
-            <Field label="Phone" value={p.phone_number || '—'} />
+            {showPhone && <Field label="Phone" value={p.phone_number || '—'} />}
             <Field label="Location" value={p.location} full />
           </div>
         </Card>
 
-        <div className="section-header">Identification</div>
-        <Card><div className="grid2"><Field label={idLabel} value={idValue} /></div></Card>
+        {showIdentification && (
+          <>
+            <div className="section-header">Identification</div>
+            <Card><div className="grid2"><Field label={idLabel} value={idValue} /></div></Card>
+          </>
+        )}
 
-        {(p.height || p.weight) && (
+        {showPhysical && (
           <>
             <div className="section-header">Physical Metrics</div>
             <Card>
@@ -100,21 +118,29 @@ export function PatientDetailPage() {
           </>
         )}
 
-        <div className="section-header">Next of Kin</div>
-        <Card>
-          <div className="grid2">
-            <Field label="Name" value={p.next_of_kin_name ? titleCase(p.next_of_kin_name) : '—'} />
-            <Field label="Contact" value={p.next_of_kin_contact || '—'} />
-          </div>
-        </Card>
+        {showNextOfKin && (
+          <>
+            <div className="section-header">Next of Kin</div>
+            <Card>
+              <div className="grid2">
+                <Field label="Name" value={p.next_of_kin_name ? titleCase(p.next_of_kin_name) : '—'} />
+                <Field label="Contact" value={p.next_of_kin_contact || '—'} />
+              </div>
+            </Card>
+          </>
+        )}
 
-        <div className="section-header">Medical</div>
-        <Card>
-          <div className="grid2">
-            <Field label="Allergies" value={p.allergies || 'None recorded'} />
-            <Field label="Conditions" value={p.chronic_conditions || 'None recorded'} />
-          </div>
-        </Card>
+        {showMedical && (
+          <>
+            <div className="section-header">Medical</div>
+            <Card>
+              <div className="grid2">
+                <Field label="Allergies" value={p.allergies || 'None recorded'} />
+                <Field label="Conditions" value={p.chronic_conditions || 'None recorded'} />
+              </div>
+            </Card>
+          </>
+        )}
       </div>
     </>
   );

@@ -1,5 +1,7 @@
+import { useState } from 'react';
 import { TopBar, IconButton, Spinner, Alert, EmptyState, Button, SortControl } from '../components/ui';
 import { PatientCard } from '../components/patients/PatientCard';
+import { PatientPreviewSheet } from '../components/patients/PatientPreviewSheet';
 import { useApiQuery } from '../hooks/useApiQuery';
 import { useSort } from '../hooks/useSort';
 import { usePageState } from '../hooks/usePageState';
@@ -7,6 +9,7 @@ import { useNavigation } from '../context/NavigationContext';
 
 export function PatientListPage() {
   const [page, setPage] = usePageState('patientList.page', 1);
+  const [preview, setPreview] = useState(null);
   const { navigate } = useNavigation();
   const { sortBy, sortDir, setSort, queryParams } = useSort();
   const { data, loading, error } = useApiQuery(`/patients?page=${page}&limit=20&showDeleted=true&${queryParams}`, [page, queryParams]);
@@ -31,7 +34,12 @@ export function PatientListPage() {
         )}
 
         {data?.patients.map((p) => (
-          <PatientCard key={p.folder_number} patient={p} onClick={() => navigate('patientDetail', { folderNumber: p.folder_number })} />
+          <PatientCard
+            key={p.folder_number}
+            patient={p}
+            onClick={() => navigate('patientDetail', { folderNumber: p.folder_number })}
+            onPreview={() => setPreview(p)}
+          />
         ))}
 
         {data?.pagination?.pages > 1 && (
@@ -42,6 +50,15 @@ export function PatientListPage() {
           </div>
         )}
       </div>
+
+      {preview && (
+        <PatientPreviewSheet
+          patient={preview}
+          onClose={() => setPreview(null)}
+          onViewFull={() => { navigate('patientDetail', { folderNumber: preview.folder_number }); setPreview(null); }}
+          onEdit={() => { navigate('patientForm', { folderNumber: preview.folder_number }); setPreview(null); }}
+        />
+      )}
     </>
   );
 }

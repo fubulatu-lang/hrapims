@@ -1,5 +1,7 @@
+import { useState } from 'react';
 import { TopBar, IconButton, Icon, Spinner, Alert, EmptyState, SortControl } from '../components/ui';
 import { PatientCard } from '../components/patients/PatientCard';
+import { PatientPreviewSheet } from '../components/patients/PatientPreviewSheet';
 import { useDebounce } from '../hooks/useDebounce';
 import { useApiQuery } from '../hooks/useApiQuery';
 import { useSort } from '../hooks/useSort';
@@ -9,6 +11,7 @@ import { useNavigation } from '../context/NavigationContext';
 export function SearchPage() {
   const [query, setQuery] = usePageState('search.query', '');
   const [page, setPage] = usePageState('search.page', 1);
+  const [preview, setPreview] = useState(null);
   const debounced = useDebounce(query, 400);
   const { navigate } = useNavigation();
   const { sortBy, sortDir, setSort, queryParams } = useSort();
@@ -56,7 +59,12 @@ export function SearchPage() {
                 <SortControl sortBy={sortBy} sortDir={sortDir} onChange={(by, dir) => { setSort(by, dir); setPage(1); }} />
               </div>
               {data.patients.map((p) => (
-                <PatientCard key={p.folder_number} patient={p} onClick={() => navigate('patientDetail', { folderNumber: p.folder_number })} />
+                <PatientCard
+                  key={p.folder_number}
+                  patient={p}
+                  onClick={() => navigate('patientDetail', { folderNumber: p.folder_number })}
+                  onPreview={() => setPreview(p)}
+                />
               ))}
               {data.pagination.pages > 1 && (
                 <div style={{ textAlign: 'center', margin: '20px 0', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 }}>
@@ -69,6 +77,15 @@ export function SearchPage() {
           )}
         </div>
       </div>
+
+      {preview && (
+        <PatientPreviewSheet
+          patient={preview}
+          onClose={() => setPreview(null)}
+          onViewFull={() => { navigate('patientDetail', { folderNumber: preview.folder_number }); setPreview(null); }}
+          onEdit={() => { navigate('patientForm', { folderNumber: preview.folder_number }); setPreview(null); }}
+        />
+      )}
     </>
   );
 }
