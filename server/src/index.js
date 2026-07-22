@@ -87,6 +87,40 @@ async function initDB() {
         updated_at TIMESTAMP DEFAULT NOW()
       )
     `);
+    // ---- Patient stable-identity migration (v2.5.0) ----
+    // folder_number used to BE the primary key, which is exactly what
+    // makes "one active + several historical folder numbers per patient"
+    // impossible — there was no identity independent of the number
+    // itself. This adds a real `id`, backfills it, and swaps the primary
+    // key onto it. folder_number keeps its own UNIQUE index immediately
+    // after, so every existing `WHERE folder_number = $1` query elsewhere
+    // in this file keeps working unchanged — this migration is additive
+    // from the rest of the app's point of view. Guarded so it only ever
+    // runs once (checks pg_constraint), safe to leave in the boot-time
+    // migration sequence permanently like everything else here.
+    await client.query(`ALTER TABLE patients ADD COLUMN IF NOT EXISTS id UUID DEFAULT gen_random_uuid()`);
+    await client.query(`UPDATE patients SET id = gen_random_uuid() WHERE id IS NULL`);
+    await client.query(`
+      DO $$
+      BEGIN
+        IF NOT EXISTS (
+          SELECT 1 FROM pg_constraint
+          WHERE conrelid = 'patients'::regclass AND contype = 'p'
+            AND conname = 'patients_pkey_id'
+        ) THEN
+          ALTER TABLE patients ALTER COLUMN id SET NOT NULL;
+          -- The original PK (on folder_number) is always named patients_pkey
+          -- by Postgres convention since it was declared inline above.
+          IF EXISTS (SELECT 1 FROM pg_constraint WHERE conrelid = 'patients'::regclass AND conname = 'patients_pkey') THEN
+            ALTER TABLE patients DROP CONSTRAINT patients_pkey;
+          END IF;
+          ALTER TABLE patients ADD CONSTRAINT patients_pkey_id PRIMARY KEY (id);
+          IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conrelid = 'patients'::regclass AND conname = 'patients_folder_number_unique') THEN
+            ALTER TABLE patients ADD CONSTRAINT patients_folder_number_unique UNIQUE (folder_number);
+          END IF;
+        END IF;
+      END $$;
+    `);
     await client.query(`
       CREATE TABLE IF NOT EXISTS staff (
         id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -137,6 +171,102 @@ async function initDB() {
     await client.query(`CREATE INDEX IF NOT EXISTS patients_name_idx ON patients (last_name, first_name)`);
     await client.query(`CREATE INDEX IF NOT EXISTS activity_created_at_idx ON activity_logs (created_at DESC)`);
     await client.query(`CREATE INDEX IF NOT EXISTS staff_active_role_idx ON staff (is_active, role)`);
+
+    // ---- Folder Number Ledger system (v2.5.0, Phase 2 — schema only) ----
+    // Replaces the old single-counter `system_settings.last_sequence_number`
+    // approach. Phase 3 (not built yet) is the service layer that actually
+    // reads/writes these tables; for now this is pure additive schema plus
+    // a one-time backfill so the new tables reflect reality on day one.
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS folder_number_config (
+        id TEXT PRIMARY KEY DEFAULT 'main',
+        prefix TEXT NOT NULL DEFAULT '',
+        lfni BIGINT NOT NULL DEFAULT 0,
+        created_at TIMESTAMP DEFAULT NOW(),
+        updated_at TIMESTAMP DEFAULT NOW()
+      )
+    `);
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS folder_number_ledger (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        prefix TEXT,
+        sequence_number BIGINT,
+        full_folder_number TEXT NOT NULL,
+        status TEXT NOT NULL DEFAULT 'AVAILABLE',
+        patient_id UUID REFERENCES patients(id),
+        blocked_category TEXT,
+        blocked_reason TEXT,
+        created_at TIMESTAMP DEFAULT NOW(),
+        updated_at TIMESTAMP DEFAULT NOW()
+      )
+    `);
+    await client.query(`CREATE UNIQUE INDEX IF NOT EXISTS folder_ledger_full_number_idx ON folder_number_ledger (full_folder_number)`);
+    await client.query(`CREATE INDEX IF NOT EXISTS folder_ledger_status_idx ON folder_number_ledger (status)`);
+    await client.query(`CREATE INDEX IF NOT EXISTS folder_ledger_patient_idx ON folder_number_ledger (patient_id)`);
+    await client.query(`CREATE INDEX IF NOT EXISTS folder_ledger_sequence_idx ON folder_number_ledger (sequence_number)`);
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS folder_number_pool (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        folder_number_id UUID NOT NULL REFERENCES folder_number_ledger(id) ON DELETE CASCADE,
+        status TEXT NOT NULL DEFAULT 'AVAILABLE',
+        created_at TIMESTAMP DEFAULT NOW()
+      )
+    `);
+    await client.query(`CREATE UNIQUE INDEX IF NOT EXISTS folder_pool_ledger_unique_idx ON folder_number_pool (folder_number_id)`);
+    await client.query(`CREATE INDEX IF NOT EXISTS folder_pool_status_idx ON folder_number_pool (status)`);
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS folder_number_reservations (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        folder_number_id UUID NOT NULL REFERENCES folder_number_ledger(id),
+        user_id UUID REFERENCES staff(id),
+        status TEXT NOT NULL DEFAULT 'ACTIVE',
+        expires_at TIMESTAMP NOT NULL,
+        created_at TIMESTAMP DEFAULT NOW()
+      )
+    `);
+    await client.query(`CREATE INDEX IF NOT EXISTS folder_reservations_folder_idx ON folder_number_reservations (folder_number_id)`);
+    await client.query(`CREATE INDEX IF NOT EXISTS folder_reservations_status_idx ON folder_number_reservations (status)`);
+    await client.query(`CREATE INDEX IF NOT EXISTS folder_reservations_expires_idx ON folder_number_reservations (expires_at)`);
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS folder_number_audit (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        folder_number_id UUID REFERENCES folder_number_ledger(id),
+        action TEXT NOT NULL,
+        old_value TEXT,
+        new_value TEXT,
+        user_id UUID REFERENCES staff(id),
+        reason TEXT,
+        created_at TIMESTAMP DEFAULT NOW()
+      )
+    `);
+    await client.query(`CREATE INDEX IF NOT EXISTS folder_audit_folder_idx ON folder_number_audit (folder_number_id)`);
+    await client.query(`CREATE INDEX IF NOT EXISTS folder_audit_created_idx ON folder_number_audit (created_at DESC)`);
+
+    // One-time backfill: seed folder_number_config.lfni from the old
+    // counter so numbering continues without collisions, and record every
+    // already-issued folder number in the ledger as ASSIGNED so the new
+    // system never reissues one. `prefix` is deliberately left blank here
+    // — inferring a real prefix from the old free-text template
+    // (e.g. "F-YYYY-XXXXX") isn't reliable, so this is surfaced as a
+    // required manual step (Phase 5 admin page, or a direct UPDATE) rather
+    // than guessed. Guarded to run only once (checks whether the ledger
+    // already has rows) so it's safe in the permanent boot sequence.
+    const ledgerSeeded = await client.query('SELECT id FROM folder_number_ledger LIMIT 1');
+    if (ledgerSeeded.rows.length === 0) {
+      const oldSettings = await client.query("SELECT last_sequence_number FROM system_settings WHERE id = 'main'");
+      const lfni = oldSettings.rows[0] ? oldSettings.rows[0].last_sequence_number : 0;
+      await client.query(
+        `INSERT INTO folder_number_config (id, prefix, lfni) VALUES ('main', '', $1)
+         ON CONFLICT (id) DO UPDATE SET lfni = GREATEST(folder_number_config.lfni, $1)`,
+        [lfni]
+      );
+      await client.query(`
+        INSERT INTO folder_number_ledger (full_folder_number, status, patient_id, created_at)
+        SELECT folder_number, 'ASSIGNED', id, created_at FROM patients
+        ON CONFLICT (full_folder_number) DO NOTHING
+      `);
+      console.log(`Folder number ledger backfilled (LFNI=${lfni}). Set a real prefix via PUT /api/settings/folder-numbering before relying on the new system.`);
+    }
 
     const settingsCheck = await client.query("SELECT id FROM system_settings WHERE id = 'main'");
     if (settingsCheck.rows.length === 0) {
