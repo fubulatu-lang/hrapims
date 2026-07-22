@@ -1,0 +1,64 @@
+import { useState } from 'react';
+import { TopBar, IconButton, Spinner, Alert, EmptyState, Button, SortControl } from '../components/ui';
+import { PatientCard } from '../components/patients/PatientCard';
+import { PatientPreviewSheet } from '../components/patients/PatientPreviewSheet';
+import { useApiQuery } from '../hooks/useApiQuery';
+import { useSort } from '../hooks/useSort';
+import { usePageState } from '../hooks/usePageState';
+import { useNavigation } from '../context/NavigationContext';
+
+export function PatientListPage() {
+  const [page, setPage] = usePageState('patientList.page', 1);
+  const [preview, setPreview] = useState(null);
+  const { navigate } = useNavigation();
+  const { sortBy, sortDir, setSort, queryParams } = useSort();
+  const { data, loading, error } = useApiQuery(`/patients?page=${page}&limit=20&showDeleted=true&${queryParams}`, [page, queryParams]);
+
+  return (
+    <>
+      <TopBar title="Patients" subtitle={data ? `${data.pagination.total} records` : undefined} />
+      <div className="main-content">
+        <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 12 }}>
+          <SortControl sortBy={sortBy} sortDir={sortDir} onChange={(by, dir) => { setSort(by, dir); setPage(1); }} />
+        </div>
+
+        {loading && <Spinner label="Loading patients" />}
+        {error && <Alert variant="error">{error}</Alert>}
+
+        {data && data.patients.length === 0 && (
+          <EmptyState
+            icon="inbox"
+            title="No patients registered yet"
+            action={<Button onClick={() => navigate('patientForm')}>Register First Patient</Button>}
+          />
+        )}
+
+        {data?.patients.map((p) => (
+          <PatientCard
+            key={p.folder_number}
+            patient={p}
+            onClick={() => navigate('patientDetail', { folderNumber: p.folder_number })}
+            onPreview={() => setPreview(p)}
+          />
+        ))}
+
+        {data?.pagination?.pages > 1 && (
+          <div style={{ textAlign: 'center', margin: '20px 0', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 }}>
+            <IconButton icon="chevron_left" label="Previous page" variant="tonal" disabled={page <= 1} onClick={() => setPage((p) => p - 1)} />
+            <span style={{ fontWeight: 600, fontSize: '.85rem' }}>Page {page} of {data.pagination.pages}</span>
+            <IconButton icon="chevron_right" label="Next page" variant="tonal" disabled={page >= data.pagination.pages} onClick={() => setPage((p) => p + 1)} />
+          </div>
+        )}
+      </div>
+
+      {preview && (
+        <PatientPreviewSheet
+          patient={preview}
+          onClose={() => setPreview(null)}
+          onViewFull={() => { navigate('patientDetail', { folderNumber: preview.folder_number }); setPreview(null); }}
+          onEdit={() => { navigate('patientForm', { folderNumber: preview.folder_number }); setPreview(null); }}
+        />
+      )}
+    </>
+  );
+}
