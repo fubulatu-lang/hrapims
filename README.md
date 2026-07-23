@@ -1,8 +1,71 @@
-# HRAPIMS v2.4.0
+# HRAPIMS v2.5.0
 
 Hospital Records And Patient Information Management System.
 
-## v2.4.0 — the rest of the feature list
+## v2.5.0 — Folder Number Ledger, Phase 3: the engine itself
+
+Continuing the phased rollout from the "HRaPIMS feature upgrade" spec.
+**Patient registration is completely untouched in this release** —
+still uses the old `system_settings.last_sequence_number` counter, same
+as v2.4.0. That's deliberate: this phase builds and exposes the new
+engine on its own so it can be tested independently before Phase 4 wires
+it into actual patient creation.
+
+### New: `server/services/folderNumber.js`
+A dedicated service, not touching (and not touched by) any patient
+route — the spec's core rule. Exposes:
+
+- **`generateFolderNumber()`** — read-only preview of the NAFN (Next
+  Available Folder Number): prefers the lowest available, unreserved
+  number sitting in the pool (this is how a released or historical
+  number gets reused rather than numbers only ever climbing); falls back
+  to LFNI + 1.
+- **`validateFolderNumber(fullFolderNumber)`** — checks a manually-typed
+  number: correct prefix, exists, currently available, not blocked, not
+  reserved by someone else.
+- **`reserveFolderNumber({ fullFolderNumber?, userId })`** — holds a
+  number for 10 minutes via a real transaction with row-level locking
+  (`SELECT ... FOR UPDATE`), so two staff members requesting a number at
+  the same moment can never both get handed the same one.
+- **`assignFolderNumber({ fullFolderNumber, patientId, userId, reservationId? })`**
+  — the terminal step: marks the ledger row ASSIGNED, advances LFNI
+  (which only ever moves forward), completes the reservation, writes an
+  audit row.
+- **`releaseFolderNumber({ reservationId })`** — lets a cancelled
+  registration free its hold before the 10-minute TTL.
+- **`rebuildFolderPool()`** — reconciliation pass; safe to run any time,
+  not required for day-to-day correctness (the pool stays correct on its
+  own via lazy on-demand population) but useful if it ever needs a sanity
+  check.
+
+**On expiry**: there's no background process to host a scheduler here
+(Vercel serverless functions don't keep one running) — reservations
+expire lazily, checked at the moment each is next touched, not on a
+timer. Phase 5 can layer a Vercel Cron sweep on top for tidiness; it
+isn't required for correctness, and every path above already
+self-corrects for expired reservations without it.
+
+### New, exercisable-but-not-wired-in API endpoints
+`GET/PUT /api/folder-numbers/config`, `GET /api/folder-numbers/next`,
+`POST /api/folder-numbers/validate`, `POST /api/folder-numbers/reserve`,
+`POST /api/folder-numbers/release`, `POST /api/folder-numbers/rebuild-pool`
+(admin only). These exist so the engine can be tested end-to-end right
+now — Postman, curl, or a throwaway test page — without any risk to real
+patient registration.
+
+### Before Phase 4
+Phase 2's backfill left `folder_number_config.prefix` blank (there's no
+reliable way to infer your new static prefix from the old free-text
+`YYYY`-embedding template). Set it now via
+`PUT /api/folder-numbers/config` with your real prefix (e.g. `AND/ADC/`)
+before Phase 4 wires this engine into actual registration — otherwise
+new patients will get numbers with no prefix at all.
+
+---
+
+## Everything below is unchanged from v2.4.0
+
+
 
 ### Two quick fixes first
 - **Password fields now have a show/hide toggle** (the eye icon) — built

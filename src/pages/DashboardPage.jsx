@@ -4,7 +4,7 @@ import { useSession } from '../context/SessionContext';
 import { useNavigation } from '../context/NavigationContext';
 import { titleCase } from '../lib/format';
 
-const APP_VERSION = '2.4.0';
+const APP_VERSION = '2.5.0';
 
 export function DashboardPage() {
   const { staff, staffLabel, role, isAdmin, can } = useDisplaySession();

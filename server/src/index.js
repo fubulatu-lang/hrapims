@@ -5,9 +5,10 @@ const crypto = require('crypto');
 const path = require('path');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
+const { createFolderNumberService } = require('../services/folderNumber');
 
 const APP_NAME = 'HRAPIMS';
-const APP_VERSION = '2.4.0';
+const APP_VERSION = '2.5.0';
 
 // In production set JWT_SECRET yourself (Vercel env var) so sessions survive
 // deploys/restarts. Falling back to a random secret is safe but means every
@@ -23,6 +24,10 @@ const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
   ssl: { rejectUnauthorized: false },
 });
+// Phase 3: the folder number engine is its own service, deliberately not
+// merged into any patient route — see server/services/folderNumber.js for
+// why. Not wired into patient registration yet; that's Phase 4.
+const folderNumbers = createFolderNumberService(pool);
 
 app.use(cors());
 app.use(express.json());
@@ -1051,6 +1056,64 @@ app.put('/api/settings/folder-format', requireAdmin, async (req, res) => {
     );
     const result = await pool.query("SELECT * FROM system_settings WHERE id = 'main'");
     res.json(result.rows[0]);
+  } catch (error) { console.error(error); res.status(500).json({ error: error.message || 'Server error' }); }
+});
+
+// ---- Folder Number Engine (Phase 3) ----
+// Deliberately separate from /api/settings/folder-format above (the old,
+// still-in-use system) and from /api/patients (which doesn't call any of
+// this yet). These exist so the new engine can be exercised and tested
+// end-to-end on its own before Phase 4 wires it into patient
+// registration, per the spec's phased rollout.
+
+app.get('/api/folder-numbers/config', async (req, res) => {
+  try {
+    res.json(await folderNumbers.getConfig());
+  } catch (error) { res.status(400).json({ error: error.message || 'Server error' }); }
+});
+
+app.put('/api/folder-numbers/config', requireAdmin, async (req, res) => {
+  try {
+    const { prefix, lfni } = req.body;
+    if (typeof prefix !== 'string') return res.status(400).json({ error: 'prefix must be a string (may be empty)' });
+    await pool.query(
+      `INSERT INTO folder_number_config (id, prefix, lfni) VALUES ('main', $1, COALESCE($2, 0))
+       ON CONFLICT (id) DO UPDATE SET prefix = $1, lfni = COALESCE($2, folder_number_config.lfni), updated_at = NOW()`,
+      [prefix, lfni != null ? lfni : null]
+    );
+    res.json(await folderNumbers.getConfig());
+  } catch (error) { console.error(error); res.status(500).json({ error: error.message || 'Server error' }); }
+});
+
+app.get('/api/folder-numbers/next', async (req, res) => {
+  try {
+    res.json(await folderNumbers.generateFolderNumber());
+  } catch (error) { res.status(400).json({ error: error.message || 'Server error' }); }
+});
+
+app.post('/api/folder-numbers/validate', async (req, res) => {
+  try {
+    res.json(await folderNumbers.validateFolderNumber(req.body.fullFolderNumber));
+  } catch (error) { console.error(error); res.status(500).json({ error: error.message || 'Server error' }); }
+});
+
+app.post('/api/folder-numbers/reserve', async (req, res) => {
+  try {
+    const reservation = await folderNumbers.reserveFolderNumber({ fullFolderNumber: req.body.fullFolderNumber, userId: req.staff.id });
+    res.status(201).json(reservation);
+  } catch (error) { res.status(409).json({ error: error.message || 'Could not reserve that folder number' }); }
+});
+
+app.post('/api/folder-numbers/release', async (req, res) => {
+  try {
+    const result = await folderNumbers.releaseFolderNumber({ reservationId: req.body.reservationId, userId: req.staff.id, reason: req.body.reason });
+    res.json(result);
+  } catch (error) { console.error(error); res.status(500).json({ error: error.message || 'Server error' }); }
+});
+
+app.post('/api/folder-numbers/rebuild-pool', requireAdmin, async (req, res) => {
+  try {
+    res.json(await folderNumbers.rebuildFolderPool());
   } catch (error) { console.error(error); res.status(500).json({ error: error.message || 'Server error' }); }
 });
 

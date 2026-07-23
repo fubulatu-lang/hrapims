@@ -11,7 +11,7 @@ import { MergeComparisonModal } from '../components/patients/MergeComparisonModa
 import { api } from '../lib/api';
 import { titleCase } from '../lib/format';
 
-const APP_VERSION = '2.4.0';
+const APP_VERSION = '2.5.0';
 
 export function SettingsPage() {
   const { staff, role, isAdmin, can, logout } = useSession();

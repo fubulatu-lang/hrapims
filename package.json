@@ -1,6 +1,6 @@
 {
   "name": "hrapims",
-  "version": "2.4.0",
+  "version": "2.5.0",
   "description": "Hospital Records And Patient Information Management System",
   "scripts": {
     "dev:client": "vite",
